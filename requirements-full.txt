@@ -1,2 +1,0 @@
-# Dependencies adicionales para funciones completas
-resend

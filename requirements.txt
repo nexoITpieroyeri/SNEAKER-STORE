@@ -1,6 +1,0 @@
-# Dependencies
-supabase-js
-@supabase/ssr
-zod
-clsx
-tailwind-merge
