@@ -93,13 +93,13 @@ export async function createProduct(input: CreateProductInput): Promise<ActionRe
       .select()
       .single()
 
-    if (productError) {
+    if (productError || !product) {
       console.error('Error creating product:', productError)
       return { success: false, error: 'Error al crear el producto' }
     }
 
     const imageInserts = validatedData.images.map((img, index) => ({
-      product_id: product.id,
+      product_id: (product as any).id,
       image_url: img.url,
       display_order: img.order || index + 1
     }))
@@ -109,13 +109,13 @@ export async function createProduct(input: CreateProductInput): Promise<ActionRe
       .insert(imageInserts)
 
     if (imagesError) {
-      await supabase.from('products').delete().eq('id', product.id)
+      await supabase.from('products').delete().eq('id', (product as any).id)
       console.error('Error inserting images:', imagesError)
       return { success: false, error: 'Error al insertar imágenes' }
     }
 
     const sizeInserts = validatedData.sizes.map(size => ({
-      product_id: product.id,
+      product_id: (product as any).id,
       size: size.size,
       stock_quantity: size.stock,
       is_available: size.stock > 0
@@ -126,8 +126,8 @@ export async function createProduct(input: CreateProductInput): Promise<ActionRe
       .insert(sizeInserts)
 
     if (sizesError) {
-      await supabase.from('product_images').delete().eq('product_id', product.id)
-      await supabase.from('products').delete().eq('id', product.id)
+      await supabase.from('product_images').delete().eq('product_id', (product as any).id)
+      await supabase.from('products').delete().eq('id', (product as any).id)
       console.error('Error inserting sizes:', sizesError)
       return { success: false, error: 'Error al insertar tallas' }
     }
@@ -138,8 +138,8 @@ export async function createProduct(input: CreateProductInput): Promise<ActionRe
     return {
       success: true,
       data: {
-        id: product.id,
-        slug: product.slug
+        id: (product as any).id,
+        slug: (product as any).slug
       }
     }
   } catch (error) {

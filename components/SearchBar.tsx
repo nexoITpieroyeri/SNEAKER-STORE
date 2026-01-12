@@ -112,7 +112,7 @@ export function SearchBar() {
             href={`/catalogo?search=${encodeURIComponent(query)}`}
             className="block p-3 text-center text-sm text-gray-600 hover:bg-gray-50 border-t border-gray-100"
           >
-            Ver todos los resultados para "{query}"
+            Ver todos los resultados para &quot;{query}&quot;
           </a>
         </div>
       )}

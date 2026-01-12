@@ -97,20 +97,20 @@ export default async function AdminDashboard() {
             Productos Recientes
           </h2>
           <div className="space-y-4">
-            {recentProducts?.map((product) => (
-              <div key={product.id} className="flex items-center gap-4">
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-gray-900 truncate">
-                    {product.name}
-                  </p>
-                  <p className="text-xs text-gray-500">
-                    {formatRelativeTime(product.created_at)}
-                  </p>
-                </div>
-                <StatusBadge status={product.status} />
-              </div>
-            ))}
-          </div>
+             {recentProducts?.map((product: any) => (
+               <div key={product.id} className="flex items-center gap-4">
+                 <div className="flex-1 min-w-0">
+                   <p className="text-sm font-medium text-gray-900 truncate">
+                     {product.name}
+                   </p>
+                   <p className="text-xs text-gray-500">
+                     {formatRelativeTime(product.created_at)}
+                   </p>
+                 </div>
+                 <StatusBadge status={product.status} />
+               </div>
+             ))}
+           </div>
         </div>
 
         {lowStockProducts && lowStockProducts.length > 0 && (
@@ -128,8 +128,8 @@ export default async function AdminDashboard() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {lowStockProducts?.map((item) => (
-                    <tr key={item.product_id}>
+                   {lowStockProducts?.map((item: any) => (
+                     <tr key={item.product_id}>
                       <td className="py-2 text-sm">
                         {(item.product as { name: string })?.name}
                       </td>
@@ -215,8 +215,8 @@ function StatusBadge({ status }: { status: string }) {
   )
 }
 
-function Icon({ name }: { name: string }) {
-  const icons: Record<string, JSX.Element> = {
+function Icon({ name }: { name: string }): React.ReactElement {
+  const icons: Record<string, React.ReactElement> = {
     products: (
       <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />

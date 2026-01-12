@@ -20,9 +20,9 @@ export function NewsletterForm() {
       .insert({ email })
 
     if (error) {
-      setMessage({ type: 'error', 'El email ya está registrado o ocurrió un error' })
+      setMessage({ type: 'error', text: 'El email ya está registrado o ocurrió un error' })
     } else {
-      setMessage({ type: 'success', '¡Te has suscrito correctamente!' })
+      setMessage({ type: 'success', text: '¡Te has suscrito correctamente!' })
       setEmail('')
     }
     setLoading(false)

@@ -10,14 +10,9 @@ export async function GET(
 
   await supabase
     .from('product_views')
-    .insert({
-      product_id: slug,
-    })
+    .insert({ product_id: slug } as any)
 
-  await supabase
-    .from('products')
-    .update({ view_count: supabase.raw('view_count + 1') })
-    .eq('id', slug)
+  await supabase.rpc('increment_view_count', { product_id: slug } as any)
 
   revalidatePath(`/producto/${slug}`)
 

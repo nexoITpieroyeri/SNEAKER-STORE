@@ -65,7 +65,7 @@ export async function getAnalytics(): Promise<AnalyticsData> {
     const date = new Date()
     date.setDate(date.getDate() - i)
     const dateStr = date.toISOString().split('T')[0]
-    const count = viewsThisWeek?.filter(v => 
+    const count = viewsThisWeek?.filter((v: any) => 
       v.viewed_at.split('T')[0] === dateStr
     ).length || 0
     viewsByDay.push({ date: dateStr, count })
@@ -75,8 +75,8 @@ export async function getAnalytics(): Promise<AnalyticsData> {
     totalViews: totalViews || 0,
     totalWhatsAppClicks: totalWhatsAppClicks || 0,
     totalProducts: totalProducts || 0,
-    topProducts: topProducts || [],
-    recentViews: recentViews || [],
+    topProducts: (topProducts as any) || [],
+    recentViews: (recentViews as any) || [],
     viewsByDay,
   }
 }
@@ -84,16 +84,12 @@ export async function getAnalytics(): Promise<AnalyticsData> {
 export async function trackProductView(productId: string, userIp?: string) {
   const supabase = createClient()
 
-  await Promise.all([
-    supabase.from('product_views').insert({
-      product_id: productId,
-      user_ip: userIp,
-    }),
-    supabase
-      .from('products')
-      .update({ view_count: supabase.raw('view_count + 1') })
-      .eq('id', productId),
-  ])
+  await supabase.from('product_views').insert({
+    product_id: productId,
+    user_ip: userIp,
+  } as any)
+
+  await supabase.rpc('increment_view_count', { product_id: productId } as any)
 
   revalidatePath(`/producto/*`)
 }
@@ -109,13 +105,10 @@ export async function trackAnalyticsEvent(
     event_type: eventType,
     product_id: productId,
     metadata,
-  })
+  } as any)
 
   if (eventType === 'whatsapp_click' && productId) {
-    await supabase
-      .from('products')
-      .update({ whatsapp_clicks: supabase.raw('whatsapp_clicks + 1') })
-      .eq('id', productId)
+    await supabase.rpc('increment_whatsapp_clicks', { product_id: productId } as any)
   }
 
   revalidatePath('/admin')

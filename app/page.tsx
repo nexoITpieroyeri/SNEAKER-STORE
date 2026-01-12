@@ -44,10 +44,7 @@ export default async function HomePage() {
   return (
     <div className="min-h-screen">
       <section className="relative bg-gray-900 text-white overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-r from-black/80 to-transparent z-10" />
-        <div className="absolute inset-0 bg-[url('/hero-bg.jpg')] bg-cover bg-center" />
-        
-        <div className="relative z-20 max-w-7xl mx-auto px-4 py-24 sm:py-32">
+        <div className="max-w-7xl mx-auto px-4 py-24 sm:py-32">
           <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold mb-6">
             Zapatillas<br />Auténticas
           </h1>
@@ -110,7 +107,7 @@ export default async function HomePage() {
               </Link>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-              {featuredProducts.map((product) => (
+              {featuredProducts.map((product: any) => (
                 <ProductCard 
                   key={product.id} 
                   product={product as unknown as ProductWithDetails} 
@@ -168,13 +165,11 @@ export default async function HomePage() {
                 Ver Catálogo
               </Link>
             </div>
-            <div className="relative aspect-square bg-gray-800 rounded-2xl overflow-hidden">
-              <Image
-                src="/how-to-buy.jpg"
-                alt="Cómo comprar"
-                fill
-                className="object-cover"
-              />
+            <div className="bg-gray-800 rounded-2xl p-8 text-center">
+              <svg className="w-32 h-32 mx-auto text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
+              </svg>
+              <p className="text-gray-400 mt-4">Proceso de compra simple</p>
             </div>
           </div>
         </div>
@@ -195,7 +190,7 @@ export default async function HomePage() {
               </Link>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-              {newArrivals.map((product) => (
+              {newArrivals.map((product: any) => (
                 <ProductCard 
                   key={product.id} 
                   product={product as unknown as ProductWithDetails} 
@@ -211,10 +206,10 @@ export default async function HomePage() {
           <h2 className="text-2xl font-bold text-gray-900 text-center mb-8">
             Nuestras Marcas
           </h2>
-          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-8">
-            {brands && brands.map((brand) => (
-              <Link
-                key={brand.id}
+           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-8">
+             {brands && brands.map((brand: any) => (
+               <Link
+                 key={brand.id}
                 href={`/catalogo?brand=${brand.slug}`}
                 className="flex items-center justify-center p-8 bg-white rounded-xl shadow-sm hover:shadow-md transition-shadow"
               >

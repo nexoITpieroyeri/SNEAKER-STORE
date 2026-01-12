@@ -1,13 +1,21 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
-import { getAnalytics } from '@/lib/actions/analyticsActions'
+import { headers } from 'next/headers'
 
 export default async function AdminLayout({
   children,
 }: {
   children: React.ReactNode
 }) {
+  const headersList = headers()
+  const pathname = headersList.get('x pathname') || ''
+  
+  // Si está en /admin/login, no verificar auth
+  if (pathname === '/admin/login') {
+    return <>{children}</>
+  }
+
   const supabase = createClient()
 
   const { data: { user } } = await supabase.auth.getUser()
@@ -102,8 +110,8 @@ function NavLink({
   )
 }
 
-function Icon({ name }: { name: string }) {
-  const icons: Record<string, JSX.Element> = {
+function Icon({ name }: { name: string }): React.ReactElement {
+  const icons: Record<string, React.ReactElement> = {
     dashboard: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />

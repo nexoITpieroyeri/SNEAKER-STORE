@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
+import { z } from 'zod'
 
 const reservationSchema = z.object({
   product_id: z.string().uuid(),
@@ -9,8 +10,6 @@ const reservationSchema = z.object({
   customer_phone: z.string().min(10),
   reservation_days: z.number().min(1).max(7).default(3),
 })
-
-import { z } from 'zod'
 
 interface ReservationResult {
   success: boolean
@@ -53,12 +52,12 @@ export async function createReservation(input: {
 
     await supabase
       .from('product_sizes')
-      .update({ stock_quantity: supabase.raw('stock_quantity - 1') })
+      .update({ stock_quantity: (supabase as any).raw('stock_quantity - 1') })
       .eq('product_id', validatedData.product_id)
       .eq('size', validatedData.size)
 
     revalidatePath('/admin')
-    return { success: true, data: { id: reservation.id, expires_at: reservation.expires_at } }
+    return { success: true, data: { id: (reservation as any).id, expires_at: (reservation as any).expires_at } }
   } catch (error) {
     if (error instanceof z.ZodError) {
       return { success: false, error: error.errors.map(e => e.message).join(', ') }
@@ -79,9 +78,9 @@ export async function cancelReservation(reservationId: string) {
   if (reservation) {
     await supabase
       .from('product_sizes')
-      .update({ stock_quantity: supabase.raw('stock_quantity + 1') })
-      .eq('product_id', reservation.product_id)
-      .eq('size', reservation.size)
+      .update({ stock_quantity: (supabase as any).raw('stock_quantity + 1') })
+      .eq('product_id', (reservation as any).product_id)
+      .eq('size', (reservation as any).size)
 
     await supabase
       .from('reservations')
@@ -112,7 +111,7 @@ export async function getReservations() {
       *,
       product:products(id, name, slug)
     `)
-    .order('created: false })
+    .order('created_at', { ascending: false })
 
- _at', { ascending return data || []
+  return data || []
 }

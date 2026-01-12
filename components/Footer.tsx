@@ -6,7 +6,7 @@ export function Footer() {
   return (
     <footer className="bg-gray-900 text-white">
       <div className="max-w-7xl mx-auto px-4 py-12">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-8">
           <div>
             <h3 className="text-xl font-bold mb-4">
               SNEAKER<span className="text-gray-400">STORE</span>
@@ -28,12 +28,12 @@ export function Footer() {
           </div>
 
           <div>
-            <h4 className="font-semibold mb-4">Atención</h4>
+            <h4 className="font-semibold mb-4">Información</h4>
             <ul className="space-y-2 text-sm text-gray-400">
               <li><Link href="/contacto" className="hover:text-white transition-colors">Contacto</Link></li>
               <li><Link href="/preguntas-frecuentes" className="hover:text-white transition-colors">Preguntas Frecuentes</Link></li>
               <li><Link href="/guia-tallas" className="hover:text-white transition-colors">Guía de Tallas</Link></li>
-              <li><Link href="/politicas-envio" className="hover:text-white transition-colors">Políticas de Envío</Link></li>
+              <li><Link href="/blog" className="hover:text-white transition-colors">Blog</Link></li>
             </ul>
           </div>
 
@@ -56,6 +56,14 @@ export function Footer() {
                 </svg>
               </a>
             </div>
+          </div>
+
+          <div>
+            <h4 className="font-semibold mb-4">Administración</h4>
+            <ul className="space-y-2 text-sm text-gray-400">
+              <li><Link href="/login" className="hover:text-white transition-colors">Iniciar Sesión</Link></li>
+              <li><Link href="/admin" className="hover:text-white transition-colors">Panel Admin</Link></li>
+            </ul>
           </div>
         </div>
 
