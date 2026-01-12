@@ -128,9 +128,9 @@ export default async function AdminDashboard() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {lowStockProducts.map (
+                  {lowStockProducts?.map((item) => (
                     <tr key={item.product_id}>
-                      ((item) =><td className="py-2 text-sm">
+                      <td className="py-2 text-sm">
                         {(item.product as { name: string })?.name}
                       </td>
                       <td className="py-2">
