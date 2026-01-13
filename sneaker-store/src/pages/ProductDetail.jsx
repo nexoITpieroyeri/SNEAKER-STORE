@@ -1,40 +1,11 @@
 import { useState, useEffect } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { ArrowLeft, Heart, Share2, MessageCircle, Check, X } from 'lucide-react'
+import { ArrowLeft, Heart, Share2, MessageCircle } from 'lucide-react'
 import { Button } from '../components/ui/Button'
 import { Card, CardContent } from '../components/ui/Card'
 import { useCartStore } from '../store/favoritesStore'
-import { WHATSAPP_NUMBER } from '../lib/config'
-
-const mockProduct = {
-  id: 1,
-  name: 'Nike Dunk Low "Panda"',
-  slug: 'nike-dunk-low-panda',
-  description: 'Las Nike Dunk Low "Panda" son un clásico absoluto que combina versatilidad y estilo. Con su combinación de colores hitam y blanco, son perfectas para cualquier outfit. Originalmente diseñadas para la cancha de baloncesto, hoy son un ícono de la cultura sneaker.',
-  base_price: 2500,
-  final_price: 2500,
-  discount_percentage: 0,
-  gender: 'unisex',
-  category: 'casual',
-  condition: 'new_with_box',
-  brand: { id: 1, name: 'Nike', slug: 'nike' },
-  sku: 'DD1391-100',
-  images: [
-    { id: 1, image_url: 'https://images.unsplash.com/photo-1552346154-21d32810aba3?w=800', display_order: 1 },
-    { id: 2, image_url: 'https://images.unsplash.com/photo-1549298916-b41d501d3772?w=800', display_order: 2 },
-    { id: 3, image_url: 'https://images.unsplash.com/photo-1600269452121-4f2416e55c28?w=800', display_order: 3 },
-    { id: 4, image_url: 'https://images.unsplash.com/photo-1605348532760-6753d2c43329?w=800', display_order: 4 },
-  ],
-  sizes: [
-    { id: 1, size: 'US 8', stock_quantity: 2, is_available: true },
-    { id: 2, size: 'US 8.5', stock_quantity: 0, is_available: false },
-    { id: 3, size: 'US 9', stock_quantity: 1, is_available: true },
-    { id: 4, size: 'US 9.5', stock_quantity: 3, is_available: true },
-    { id: 5, size: 'US 10', stock_quantity: 0, is_available: false },
-    { id: 6, size: 'US 10.5', stock_quantity: 2, is_available: true },
-    { id: 7, size: 'US 11', stock_quantity: 1, is_available: true },
-  ]
-}
+import { handleWhatsAppClick } from '../lib/whatsapp'
+import { supabase } from '../lib/supabase'
 
 export function ProductDetailPage() {
   const { slug } = useParams()
@@ -47,10 +18,37 @@ export function ProductDetailPage() {
   useEffect(() => {
     async function fetchProduct() {
       setLoading(true)
-      await new Promise(resolve => setTimeout(resolve, 500))
-      setProduct(mockProduct)
+      try {
+        const { data, error } = await supabase
+          .from('products')
+          .select(`
+            *,
+            brand:brands(name, slug),
+            product_images(url, alt_text, sort_order, is_primary),
+            product_sizes(size, stock_quantity)
+          `)
+          .eq('slug', slug)
+          .single()
+
+        if (error || !data) {
+          setProduct(null)
+        } else {
+          setProduct({
+            ...data,
+            images: data.product_images?.sort((a, b) => a.sort_order - b.sort_order) || [],
+            sizes: data.product_sizes?.map(s => ({
+              ...s,
+              is_available: s.stock_quantity > 0
+            })) || []
+          })
+        }
+      } catch (err) {
+        console.error('Error fetching product:', err)
+        setProduct(null)
+      }
       setLoading(false)
     }
+
     fetchProduct()
   }, [slug])
 
@@ -58,21 +56,29 @@ export function ProductDetailPage() {
     return new Intl.NumberFormat('es-MX', {
       style: 'currency',
       currency: 'MXN'
-    }).format(price)
+    }).format(price || 0)
   }
 
   const favorite = product ? isFavorite(product.id) : false
 
-  const handleWhatsApp = () => {
+  const handleWhatsApp = async () => {
     if (!selectedSize) {
       alert('Por favor selecciona una talla')
       return
     }
 
-    const message = encodeURIComponent(
-      `¡Hola! Me interesa este producto:\n\n👟 ${product.name}\n📏 Talla: ${selectedSize}\n💰 Precio: ${formatPrice(product.final_price)}\n🔗 ${window.location.href}\n\n¿Está disponible?`
-    )
-    window.open(`https://wa.me/${WHATSAPP_NUMBER}?text=${message}`, '_blank')
+    await handleWhatsAppClick({
+      product: {
+        id: product.id,
+        name: product.name,
+        base_price: product.base_price,
+        final_price: product.final_price || product.base_price,
+        sku: product.sku
+      },
+      selectedSize,
+      quantity: 1,
+      type: 'inquiry'
+    })
   }
 
   if (loading) {
@@ -115,7 +121,7 @@ export function ProductDetailPage() {
         <div className="space-y-4">
           <div className="aspect-square overflow-hidden rounded-lg bg-muted">
             <img
-              src={product.images[selectedImage]?.image_url}
+              src={product.images[selectedImage]?.url || 'https://via.placeholder.com/800'}
               alt={product.name}
               className="w-full h-full object-cover"
             />
@@ -123,21 +129,26 @@ export function ProductDetailPage() {
           <div className="flex gap-4 overflow-x-auto pb-2">
             {product.images.map((image, index) => (
               <button
-                key={image.id}
+                key={index}
                 onClick={() => setSelectedImage(index)}
                 className={`flex-shrink-0 w-20 h-20 rounded-lg overflow-hidden border-2 transition-colors ${
                   selectedImage === index ? 'border-primary' : 'border-transparent'
                 }`}
               >
-                <img src={image.image_url} alt="" className="w-full h-full object-cover" />
+                <img src={image.url} alt="" className="w-full h-full object-cover" />
               </button>
             ))}
+            {product.images.length === 0 && (
+              <div className="flex-shrink-0 w-20 h-20 rounded-lg bg-muted flex items-center justify-center">
+                <span className="text-xs text-muted-foreground">Sin imagen</span>
+              </div>
+            )}
           </div>
         </div>
 
         <div>
           <div className="flex items-center gap-2 mb-2">
-            <span className="text-sm text-muted-foreground uppercase">{product.brand.name}</span>
+            <span className="text-sm text-muted-foreground uppercase">{product.brand?.name}</span>
           </div>
           <h1 className="text-3xl font-bold mb-4">{product.name}</h1>
           
@@ -162,12 +173,12 @@ export function ProductDetailPage() {
           </div>
 
           <div className="mb-6">
-            <p className="text-sm text-muted-foreground mb-3">SKU: {product.sku}</p>
+            {product.sku && <p className="text-sm text-muted-foreground mb-3">SKU: {product.sku}</p>}
             <div className="flex gap-2">
               <span className="text-xs px-2 py-1 bg-muted rounded capitalize">{product.gender}</span>
-              <span className="text-xs px-2 py-1 bg-muted rounded capitalize">{product.category.replace('_', ' ')}</span>
+              <span className="text-xs px-2 py-1 bg-muted rounded capitalize">{product.category?.replace('_', ' ')}</span>
               <span className="text-xs px-2 py-1 bg-muted rounded capitalize">
-                {product.condition.replace(/_/g, ' ')}
+                {product.condition?.replace(/_/g, ' ')}
               </span>
             </div>
           </div>
@@ -176,9 +187,9 @@ export function ProductDetailPage() {
             <CardContent className="p-4">
               <h3 className="font-semibold mb-3">Selecciona tu talla</h3>
               <div className="grid grid-cols-4 gap-2">
-                {product.sizes.map(size => (
+                {product.sizes.map((size, index) => (
                   <button
-                    key={size.id}
+                    key={index}
                     onClick={() => size.is_available && setSelectedSize(size.size)}
                     disabled={!size.is_available}
                     className={`py-2 px-3 rounded-lg text-sm font-medium transition-colors ${
@@ -193,7 +204,10 @@ export function ProductDetailPage() {
                   </button>
                 ))}
               </div>
-              {!product.sizes.some(s => s.is_available) && (
+              {(!product.sizes || product.sizes.length === 0) && (
+                <p className="text-sm text-slate-500 mt-2">No hay tallas disponibles</p>
+              )}
+              {product.sizes && !product.sizes.some(s => s.is_available) && (
                 <p className="text-sm text-red-500 mt-2">Todas las tallas agotadas</p>
               )}
             </CardContent>
@@ -204,7 +218,7 @@ export function ProductDetailPage() {
               onClick={handleWhatsApp}
               size="lg"
               className="flex-1 gap-2 bg-green-500 hover:bg-green-600"
-              disabled={!selectedSize || !product.sizes.find(s => s.size === selectedSize)?.is_available}
+              disabled={!selectedSize || !product.sizes?.find(s => s.size === selectedSize)?.is_available}
             >
               <MessageCircle className="h-5 w-5" />
               Consultar por WhatsApp
@@ -229,7 +243,7 @@ export function ProductDetailPage() {
           <div className="border-t mt-6 pt-6 grid grid-cols-2 gap-4 text-sm">
             <div>
               <span className="text-muted-foreground">Estado:</span>
-              <span className="ml-2 font-medium capitalize">{product.condition.replace(/_/g, ' ')}</span>
+              <span className="ml-2 font-medium capitalize">{product.condition?.replace(/_/g, ' ')}</span>
             </div>
             <div>
               <span className="text-muted-foreground">SKU:</span>

@@ -4,6 +4,7 @@ import { Button } from './ui/Button'
 import { useCartStore } from '../store/favoritesStore'
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { handleWhatsAppClick } from '../lib/whatsapp'
 
 export function Header() {
   const { favorites } = useCartStore()
@@ -49,6 +50,12 @@ export function Header() {
   const handleLogout = async () => {
     await supabase.auth.signOut()
     window.location.href = '/'
+  }
+
+  const handleWhatsAppContact = async () => {
+    await handleWhatsAppClick({
+      type: 'general'
+    })
   }
 
   const navLinks = [
@@ -139,16 +146,14 @@ export function Header() {
               </Button>
             </a>
 
-            <a
-              href="https://wa.me/"
-              target="_blank"
-              rel="noopener noreferrer"
+            <button
+              onClick={handleWhatsAppContact}
               className="hidden md:block"
             >
               <Button variant="ghost" size="icon" className="text-green-500 hover:text-green-600">
                 <MessageCircle className="h-5 w-5" />
               </Button>
-            </a>
+            </button>
 
             {!user && (
               <Link to="/login">

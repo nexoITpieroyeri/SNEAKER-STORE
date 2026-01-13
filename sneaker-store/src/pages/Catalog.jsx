@@ -6,69 +6,13 @@ import { Button } from '../components/ui/Button'
 import { ProductCard } from '../components/ProductCard'
 import { supabase } from '../lib/supabase'
 
-const mockBrands = [
-  { id: 1, name: 'Nike', slug: 'nike' },
-  { id: 2, name: 'Adidas', slug: 'adidas' },
-  { id: 3, name: 'Jordan', slug: 'jordan' },
-  { id: 4, name: 'Yeezy', slug: 'yeezy' },
-  { id: 5, name: 'New Balance', slug: 'new_balance' },
-  { id: 6, name: 'Puma', slug: 'puma' },
-]
-
-const mockProducts = [
-  {
-    id: 1,
-    name: 'Nike Dunk Low "Panda"',
-    slug: 'nike-dunk-low-panda',
-    base_price: 2500,
-    final_price: 2500,
-    discount_percentage: 0,
-    brand: { name: 'Nike', slug: 'nike' },
-    images: [{ image_url: 'https://images.unsplash.com/photo-1552346154-21d32810aba3?w=500' }],
-    sizes: [{ size: 'US 8' }, { size: 'US 9' }, { size: 'US 10' }],
-  },
-  {
-    id: 2,
-    name: 'Air Jordan 1 High OG "Chicago"',
-    slug: 'air-jordan-1-high-og-chicago',
-    base_price: 3200,
-    final_price: 2900,
-    discount_percentage: 10,
-    brand: { name: 'Jordan', slug: 'jordan' },
-    images: [{ image_url: 'https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=500' }],
-    sizes: [{ size: 'US 8.5' }, { size: 'US 9' }],
-  },
-  {
-    id: 3,
-    name: 'Adidas Yeezy Boost 350 "Zebra"',
-    slug: 'adidas-yeezy-boost-350-zebra',
-    base_price: 4500,
-    final_price: 4500,
-    discount_percentage: 0,
-    brand: { name: 'Yeezy', slug: 'yeezy' },
-    images: [{ image_url: 'https://images.unsplash.com/photo-1608231387042-66d1773070a5?w=500' }],
-    sizes: [{ size: 'US 10' }, { size: 'US 11' }, { size: 'US 12' }],
-  },
-  {
-    id: 4,
-    name: 'New Balance 550 "White Green"',
-    slug: 'new-balance-550-white-green',
-    base_price: 2800,
-    final_price: 2500,
-    discount_percentage: 10,
-    brand: { name: 'New Balance', slug: 'new_balance' },
-    images: [{ image_url: 'https://images.unsplash.com/photo-1539185441755-769473a23570?w=500' }],
-    sizes: [{ size: 'US 7' }, { size: 'US 8' }, { size: 'US 9' }],
-  },
-]
-
-export function CatalogFilters({ filters, setFilters }) {
+export function CatalogFilters({ brands, filters, setFilters }) {
   return (
     <div className="space-y-6">
       <div>
         <h3 className="font-semibold mb-3">Marca</h3>
         <div className="space-y-2">
-          {mockBrands.map(brand => (
+          {brands.map(brand => (
             <label key={brand.id} className="flex items-center space-x-2 cursor-pointer">
               <input
                 type="checkbox"
@@ -176,6 +120,7 @@ export function CatalogFilters({ filters, setFilters }) {
 export function CatalogPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const [products, setProducts] = useState([])
+  const [brands, setBrands] = useState([])
   const [loading, setLoading] = useState(true)
   const [showFilters, setShowFilters] = useState(false)
   const [filters, setFilters] = useState({
@@ -186,35 +131,87 @@ export function CatalogPage() {
   })
 
   useEffect(() => {
+    async function fetchBrands() {
+      try {
+        const { data } = await supabase
+          .from('brands')
+          .select('id, name, slug')
+          .eq('is_active', true)
+          .order('name')
+        
+        setBrands(data || [])
+      } catch (err) {
+        console.error('Error loading brands:', err)
+        setBrands([])
+      }
+    }
+
+    fetchBrands()
+  }, [])
+
+  useEffect(() => {
     async function fetchProducts() {
       setLoading(true)
-      let data = [...mockProducts]
+      try {
+        let query = supabase
+          .from('products')
+          .select(`
+            *,
+            brand:brands(name, slug),
+            product_images(url, alt_text, sort_order, is_primary),
+            product_sizes(size, stock_quantity)
+          `)
+          .eq('status', 'published')
 
-      if (filters.search) {
-        data = data.filter(p => 
-          p.name.toLowerCase().includes(filters.search.toLowerCase())
-        )
+        const { data, error } = await query
+
+        if (error) throw error
+
+        let filteredData = data || []
+
+        if (filters.search) {
+          filteredData = filteredData.filter(p => 
+            p.name.toLowerCase().includes(filters.search.toLowerCase())
+          )
+        }
+
+        if (filters.brands.length > 0) {
+          filteredData = filteredData.filter(p => filters.brands.includes(p.brand?.slug))
+        }
+
+        if (filters.gender) {
+          filteredData = filteredData.filter(p => p.gender === filters.gender)
+        }
+
+        if (filters.priceRange !== 'all') {
+          filteredData = filteredData.filter(p => {
+            const price = p.final_price || p.base_price
+            if (filters.priceRange === '0-2000') return price < 2000
+            if (filters.priceRange === '2000-4000') return price >= 2000 && price <= 4000
+            if (filters.priceRange === '4000+') return price > 4000
+            return true
+          })
+        }
+
+        const formattedProducts = filteredData.map(p => ({
+          id: p.id,
+          name: p.name,
+          slug: p.slug,
+          base_price: p.base_price,
+          final_price: p.final_price || p.base_price,
+          discount_percentage: p.discount_percentage,
+          brand: p.brand,
+          images: p.product_images?.sort((a, b) => a.sort_order - b.sort_order).map(img => ({ 
+            image_url: img.url 
+          })) || [],
+          has_stock: p.product_sizes?.some(s => s.stock_quantity > 0) || false
+        }))
+
+        setProducts(formattedProducts)
+      } catch (err) {
+        console.error('Error loading products:', err)
+        setProducts([])
       }
-
-      if (filters.brands.length > 0) {
-        data = data.filter(p => filters.brands.includes(p.brand.slug))
-      }
-
-      if (filters.gender) {
-        data = data.filter(p => p.gender === filters.gender)
-      }
-
-      if (filters.priceRange !== 'all') {
-        data = data.filter(p => {
-          const price = p.final_price
-          if (filters.priceRange === '0-2000') return price < 2000
-          if (filters.priceRange === '2000-4000') return price >= 2000 && price <= 4000
-          if (filters.priceRange === '4000+') return price > 4000
-          return true
-        })
-      }
-
-      setProducts(data)
       setLoading(false)
     }
 
@@ -238,7 +235,7 @@ export function CatalogPage() {
         <div className="flex gap-8">
           <aside className={`hidden md:block w-64 flex-shrink-0 ${showFilters ? 'block' : ''}`}>
             <div className="sticky top-24">
-              <CatalogFilters filters={filters} setFilters={setFilters} />
+              <CatalogFilters brands={brands} filters={filters} setFilters={setFilters} />
             </div>
           </aside>
 

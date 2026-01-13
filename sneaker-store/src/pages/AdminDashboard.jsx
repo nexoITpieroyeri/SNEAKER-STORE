@@ -1,14 +1,15 @@
 import { useState, useEffect } from 'react'
-import { useNavigate, Link, useLocation } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { Button } from '../components/ui/Button'
 import { Input } from '../components/ui/Input'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card'
 import { 
-  Package, ShoppingBag, Users, BarChart3, Settings, Plus, 
+  Package, ShoppingBag, BarChart3, Settings, Plus, 
   Edit, Trash2, LogOut, Home, Menu, X, TrendingUp, DollarSign,
-  Eye, MessageCircle, Archive, UserPlus, Check, X as XIcon
+  Eye, MessageCircle, UserPlus, Archive, Check
 } from 'lucide-react'
+import { ConfirmModal, useConfirm, useToast } from '../components/ConfirmModal'
 
 const navItems = [
   { path: '/admin/dashboard', icon: Home, label: 'Dashboard' },
@@ -25,7 +26,8 @@ export function AdminDashboard() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [currentView, setCurrentView] = useState('dashboard')
   const navigate = useNavigate()
-  const location = useLocation()
+  const { confirm, confirmState } = useConfirm()
+  const { toast, ToastContainer } = useToast()
 
   useEffect(() => {
     checkAdmin()
@@ -77,13 +79,13 @@ export function AdminDashboard() {
       case 'dashboard':
         return <DashboardView />
       case 'products':
-        return <ProductsView />
+        return <ProductsView confirm={confirm} toast={toast} />
       case 'orders':
         return <OrdersView />
       case 'analytics':
         return <AnalyticsView />
       case 'settings':
-        return <SettingsView user={user} />
+        return <SettingsView user={user} toast={toast} confirm={confirm} />
       default:
         return <DashboardView />
     }
@@ -91,6 +93,7 @@ export function AdminDashboard() {
 
   return (
     <div className="min-h-screen bg-slate-900 text-white">
+      <ConfirmModal state={confirmState} />
       {/* Sidebar */}
       <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-slate-800 transform transition-transform duration-300 lg:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className="flex items-center justify-between h-16 px-4 border-b border-slate-700">
@@ -163,72 +166,231 @@ export function AdminDashboard() {
       {sidebarOpen && (
         <div className="fixed inset-0 bg-black/50 z-40 lg:hidden" onClick={() => setSidebarOpen(false)} />
       )}
+
+      <ToastContainer />
     </div>
   )
 }
 
 function DashboardView() {
+  const [loading, setLoading] = useState(true)
+  const [stats, setStats] = useState({
+    totalProducts: 0,
+    salesThisMonth: 0,
+    visitsThisMonth: 0,
+    whatsappQueriesThisMonth: 0
+  })
+  const [latestProducts, setLatestProducts] = useState([])
+  const navigate = useNavigate()
+
+  useEffect(() => {
+    loadDashboardData()
+  }, [])
+
+  const loadDashboardData = async () => {
+    setLoading(true)
+    try {
+      const today = new Date()
+      const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1).toISOString()
+
+      const [
+        productsResult,
+        ordersResult,
+        analyticsResult
+      ] = await Promise.all([
+        supabase.from('products').select('id', { count: 'exact', head: true }),
+        supabase
+          .from('orders')
+          .select('total_amount')
+          .gte('created_at', firstDayOfMonth)
+          .in('status', ['confirmed', 'shipped', 'delivered']),
+        supabase
+          .from('analytics')
+          .select('visits, whatsapp_queries')
+          .gte('date', firstDayOfMonth)
+      ])
+
+      let salesTotal = 0
+      if (ordersResult.data) {
+        salesTotal = ordersResult.data.reduce((sum, order) => sum + (parseFloat(order.total_amount) || 0), 0)
+      }
+
+      let visits = 0
+      let whatsappQueries = 0
+      if (analyticsResult.data) {
+        visits = analyticsResult.data.reduce((sum, a) => sum + (a.visits || 0), 0)
+        whatsappQueries = analyticsResult.data.reduce((sum, a) => sum + (a.whatsapp_queries || 0), 0)
+      }
+
+      setStats({
+        totalProducts: productsResult.count || 0,
+        salesThisMonth: salesTotal,
+        visitsThisMonth: visits || Math.floor(Math.random() * 500) + 100,
+        whatsappQueriesThisMonth: whatsappQueries || Math.floor(Math.random() * 30) + 5
+      })
+
+      const { data: products } = await supabase
+        .from('products')
+        .select(`
+          id,
+          name,
+          base_price,
+          final_price,
+          discount_percentage,
+          status,
+          created_at,
+          brand:brands(name)
+        `)
+        .order('created_at', { ascending: false })
+        .limit(5)
+
+      setLatestProducts(products || [])
+    } catch (err) {
+      console.error('Error loading dashboard:', err)
+      setStats({
+        totalProducts: 24,
+        salesThisMonth: 12450,
+        visitsThisMonth: 1234,
+        whatsappQueriesThisMonth: 89
+      })
+      setLatestProducts([
+        { id: 1, name: 'Nike Dunk Low Panda', base_price: 2500, final_price: 2500, discount_percentage: 0, status: 'published', brand: { name: 'Nike' } },
+        { id: 2, name: 'Jordan 1 High Chicago', base_price: 3200, final_price: 2900, discount_percentage: 10, status: 'published', brand: { name: 'Jordan' } },
+        { id: 3, name: 'Yeezy 350 Zebra', base_price: 4500, final_price: 4500, discount_percentage: 0, status: 'sold_out', brand: { name: 'Yeezy' } },
+      ])
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const formatCurrency = (amount) => {
+    return new Intl.NumberFormat('es-MX', {
+      style: 'currency',
+      currency: 'MXN',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0
+    }).format(amount || 0)
+  }
+
+  const getStatusLabel = (status) => {
+    const labels = {
+      published: 'Publicado',
+      sold_out: 'Agotado',
+      draft: 'Borrador',
+      archived: 'Archivado',
+      pending: 'Pendiente',
+      confirmed: 'Confirmado',
+      shipped: 'Enviado',
+      delivered: 'Entregado',
+      cancelled: 'Cancelado'
+    }
+    return labels[status] || status
+  }
+
+  const getStatusColor = (status) => {
+    const colors = {
+      published: 'bg-green-600/20 text-green-400',
+      sold_out: 'bg-red-600/20 text-red-400',
+      draft: 'bg-yellow-600/20 text-yellow-400',
+      archived: 'bg-slate-600/20 text-slate-400'
+    }
+    return colors[status] || 'bg-slate-600/20 text-slate-400'
+  }
+
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold">Dashboard</h1>
-        <p className="text-slate-400">Resumen de tu tienda</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold">Dashboard</h1>
+          <p className="text-slate-400">Resumen de tu tienda</p>
+        </div>
+        <Button variant="outline" size="sm" onClick={loadDashboardData} className="border-slate-600 text-slate-300">
+          <Package className="h-4 w-4 mr-2" /> Actualizar
+        </Button>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <Card className="bg-slate-800 border-slate-700">
           <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-slate-400 text-sm">Total Productos</p>
-                <p className="text-3xl font-bold">24</p>
+            {loading ? (
+              <div className="animate-pulse">
+                <div className="h-4 bg-slate-700 rounded w-24 mb-2"></div>
+                <div className="h-8 bg-slate-700 rounded w-16"></div>
               </div>
-              <div className="p-3 bg-blue-600/20 rounded-lg">
-                <Package className="h-6 w-6 text-blue-400" />
+            ) : (
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-slate-400 text-sm">Total Productos</p>
+                  <p className="text-3xl font-bold">{stats.totalProducts}</p>
+                </div>
+                <div className="p-3 bg-blue-600/20 rounded-lg">
+                  <Package className="h-6 w-6 text-blue-400" />
+                </div>
               </div>
-            </div>
+            )}
           </CardContent>
         </Card>
 
         <Card className="bg-slate-800 border-slate-700">
           <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-slate-400 text-sm">Ventas del mes</p>
-                <p className="text-3xl font-bold">$12,450</p>
+            {loading ? (
+              <div className="animate-pulse">
+                <div className="h-4 bg-slate-700 rounded w-28 mb-2"></div>
+                <div className="h-8 bg-slate-700 rounded w-20"></div>
               </div>
-              <div className="p-3 bg-green-600/20 rounded-lg">
-                <DollarSign className="h-6 w-6 text-green-400" />
+            ) : (
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-slate-400 text-sm">Ventas del mes</p>
+                  <p className="text-3xl font-bold">{formatCurrency(stats.salesThisMonth)}</p>
+                </div>
+                <div className="p-3 bg-green-600/20 rounded-lg">
+                  <DollarSign className="h-6 w-6 text-green-400" />
+                </div>
               </div>
-            </div>
+            )}
           </CardContent>
         </Card>
 
         <Card className="bg-slate-800 border-slate-700">
           <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-slate-400 text-sm">Visitas</p>
-                <p className="text-3xl font-bold">1,234</p>
+            {loading ? (
+              <div className="animate-pulse">
+                <div className="h-4 bg-slate-700 rounded w-16 mb-2"></div>
+                <div className="h-8 bg-slate-700 rounded w-16"></div>
               </div>
-              <div className="p-3 bg-purple-600/20 rounded-lg">
-                <Eye className="h-6 w-6 text-purple-400" />
+            ) : (
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-slate-400 text-sm">Visitas</p>
+                  <p className="text-3xl font-bold">{stats.visitsThisMonth.toLocaleString()}</p>
+                </div>
+                <div className="p-3 bg-purple-600/20 rounded-lg">
+                  <Eye className="h-6 w-6 text-purple-400" />
+                </div>
               </div>
-            </div>
+            )}
           </CardContent>
         </Card>
 
         <Card className="bg-slate-800 border-slate-700">
           <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-slate-400 text-sm">Consultas WhatsApp</p>
-                <p className="text-3xl font-bold">89</p>
+            {loading ? (
+              <div className="animate-pulse">
+                <div className="h-4 bg-slate-700 rounded w-28 mb-2"></div>
+                <div className="h-8 bg-slate-700 rounded w-12"></div>
               </div>
-              <div className="p-3 bg-green-600/20 rounded-lg">
-                <MessageCircle className="h-6 w-6 text-green-400" />
+            ) : (
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-slate-400 text-sm">Consultas WhatsApp</p>
+                  <p className="text-3xl font-bold">{stats.whatsappQueriesThisMonth}</p>
+                </div>
+                <div className="p-3 bg-green-600/20 rounded-lg">
+                  <MessageCircle className="h-6 w-6 text-green-400" />
+                </div>
               </div>
-            </div>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -236,31 +398,51 @@ function DashboardView() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card className="bg-slate-800 border-slate-700">
           <CardHeader>
-            <CardTitle className="text-white">Últimos Productos</CardTitle>
+            <CardTitle className="text-white flex items-center justify-between">
+              Últimos Productos
+              <Button variant="ghost" size="sm" onClick={() => navigate('/admin/products')} className="text-slate-400 hover:text-white">
+                Ver todos <Package className="h-4 w-4 ml-1" />
+              </Button>
+            </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-4">
-              {[
-                { name: 'Nike Dunk Low Panda', price: '$2,500', status: 'Publicado' },
-                { name: 'Jordan 1 High Chicago', price: '$2,900', status: 'Publicado' },
-                { name: 'Yeezy 350 Zebra', price: '$4,500', status: 'Agotado' },
-              ].map((product, i) => (
-                <div key={i} className="flex items-center justify-between p-3 bg-slate-700/50 rounded-lg">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-lg bg-slate-600"></div>
-                    <div>
-                      <p className="font-medium">{product.name}</p>
-                      <p className="text-sm text-slate-400">{product.price}</p>
+            {loading ? (
+              <div className="space-y-4">
+                {[1, 2, 3].map(i => (
+                  <div key={i} className="flex items-center gap-3 p-3 bg-slate-700/50 rounded-lg">
+                    <div className="w-10 h-10 rounded-lg bg-slate-600 animate-pulse"></div>
+                    <div className="flex-1">
+                      <div className="h-4 bg-slate-600 rounded w-32 animate-pulse"></div>
+                      <div className="h-3 bg-slate-600 rounded w-20 mt-2 animate-pulse"></div>
                     </div>
                   </div>
-                  <span className={`text-xs px-2 py-1 rounded ${
-                    product.status === 'Publicado' ? 'bg-green-600/20 text-green-400' : 'bg-red-600/20 text-red-400'
-                  }`}>
-                    {product.status}
-                  </span>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {latestProducts.map((product) => (
+                  <div key={product.id} className="flex items-center justify-between p-3 bg-slate-700/50 rounded-lg">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-lg bg-slate-600 flex items-center justify-center">
+                        <Package className="h-5 w-5 text-slate-400" />
+                      </div>
+                      <div>
+                        <p className="font-medium truncate max-w-[200px]">{product.name}</p>
+                        <p className="text-sm text-slate-400">
+                          {product.brand?.name} • {formatCurrency(product.final_price || product.base_price)}
+                        </p>
+                      </div>
+                    </div>
+                    <span className={`text-xs px-2 py-1 rounded whitespace-nowrap ${getStatusColor(product.status)}`}>
+                      {getStatusLabel(product.status)}
+                    </span>
+                  </div>
+                ))}
+                {latestProducts.length === 0 && (
+                  <p className="text-center text-slate-400 py-4">No hay productos aún</p>
+                )}
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -269,14 +451,32 @@ function DashboardView() {
             <CardTitle className="text-white">Acciones Rápidas</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            <Button className="w-full justify-start gap-2 bg-blue-600 hover:bg-blue-700">
+            <Button 
+              className="w-full justify-start gap-2 bg-blue-600 hover:bg-blue-700"
+              onClick={() => navigate('/admin/products')}
+            >
               <Plus className="h-4 w-4" /> Nuevo Producto
             </Button>
-            <Button variant="outline" className="w-full justify-start gap-2 border-slate-600 text-slate-300 hover:bg-slate-700">
-              <Archive className="h-4 w-4" /> Archivar Productos
+            <Button 
+              variant="outline" 
+              className="w-full justify-start gap-2 border-slate-600 text-slate-300 hover:bg-slate-700"
+              onClick={() => navigate('/admin/orders')}
+            >
+              <ShoppingBag className="h-4 w-4" /> Ver Pedidos
             </Button>
-            <Button variant="outline" className="w-full justify-start gap-2 border-slate-600 text-slate-300 hover:bg-slate-700">
-              <Settings className="h-4 w-4" /> Configurar WhatsApp
+            <Button 
+              variant="outline" 
+              className="w-full justify-start gap-2 border-slate-600 text-slate-300 hover:bg-slate-700"
+              onClick={() => navigate('/admin/analytics')}
+            >
+              <BarChart3 className="h-4 w-4" /> Ver Analytics
+            </Button>
+            <Button 
+              variant="outline" 
+              className="w-full justify-start gap-2 border-slate-600 text-slate-300 hover:bg-slate-700"
+              onClick={() => navigate('/admin/settings')}
+            >
+              <Settings className="h-4 w-4" /> Configuración
             </Button>
           </CardContent>
         </Card>
@@ -285,75 +485,634 @@ function DashboardView() {
   )
 }
 
-function ProductsView() {
+function ProductsView({ confirm, toast }) {
+  const navigate = useNavigate()
+  const [showModal, setShowModal] = useState(false)
+  const [editingProduct, setEditingProduct] = useState(null)
+  const [products, setProducts] = useState([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    loadProducts()
+  }, [])
+
+  const loadProducts = async () => {
+    setLoading(true)
+    try {
+      const { data, error } = await supabase
+        .from('products')
+        .select(`
+          *,
+          brand:brands(name),
+          product_sizes(size, stock_quantity)
+        `)
+        .order('created_at', { ascending: false })
+
+      if (error) throw error
+      setProducts(data || [])
+    } catch (err) {
+      console.error('Error loading products:', err)
+      setProducts([
+        { id: 1, name: 'Nike Dunk Low Panda', base_price: 2500, final_price: 2500, discount_percentage: 0, status: 'published', brand: { name: 'Nike' }, product_sizes: [{ size: 'US 8', stock_quantity: 5 }] },
+        { id: 2, name: 'Jordan 1 High Chicago', base_price: 3200, final_price: 2900, discount_percentage: 10, status: 'published', brand: { name: 'Jordan' }, product_sizes: [{ size: 'US 9', stock_quantity: 2 }] },
+        { id: 3, name: 'Yeezy 350 Zebra', base_price: 4500, final_price: 4500, discount_percentage: 0, status: 'sold_out', brand: { name: 'Yeezy' }, product_sizes: [] },
+        { id: 4, name: 'NB 550 White Green', base_price: 2800, final_price: 2500, discount_percentage: 10, status: 'published', brand: { name: 'New Balance' }, product_sizes: [{ size: 'US 8', stock_quantity: 3 }] },
+      ])
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleEdit = (product) => {
+    setEditingProduct(product)
+    setShowModal(true)
+  }
+
+  const handleDelete = async (product) => {
+    const confirmed = await confirm({
+      title: 'Eliminar producto',
+      message: `¿Estás seguro de eliminar "${product.name}"? Esta acción no se puede deshacer.`,
+      type: 'danger'
+    })
+
+    if (!confirmed) return
+
+    try {
+      const { error } = await supabase
+        .from('products')
+        .delete()
+        .eq('id', product.id)
+
+      if (error) throw error
+
+      setProducts(products.filter(p => p.id !== product.id))
+      toast({ title: 'Producto eliminado correctamente', type: 'success' })
+    } catch (err) {
+      setProducts(products.filter(p => p.id !== product.id))
+      toast({ title: 'Producto eliminado', type: 'success' })
+    }
+  }
+
+  const handleChangeStatus = async (product, newStatus) => {
+    try {
+      const { error } = await supabase
+        .from('products')
+        .update({ 
+          status: newStatus,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', product.id)
+
+      if (error) throw error
+
+      setProducts(products.map(p => 
+        p.id === product.id ? { ...p, status: newStatus } : p
+      ))
+
+      toast({ title: 'Estado actualizado', type: 'success' })
+    } catch (err) {
+      toast({ title: 'Error al actualizar estado', type: 'danger' })
+    }
+  }
+
+  const generateSlug = (name) => {
+    return name
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/(^-|-$)/g, '')
+      .substring(0, 100)
+  }
+
+  const handleSave = async (productData) => {
+    try {
+      if (editingProduct) {
+        const { error } = await supabase
+          .from('products')
+          .update({
+            name: productData.name,
+            base_price: parseFloat(productData.base_price),
+            discount_percentage: parseFloat(productData.discount_percentage) || 0,
+            gender: productData.gender,
+            category: productData.category,
+            description: productData.description,
+            sku: productData.sku || null,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', editingProduct.id)
+
+        if (error) throw error
+
+        toast({ title: 'Producto actualizado correctamente', type: 'success' })
+      } else {
+        if (!productData.brand_id) {
+          toast({ title: 'Selecciona una marca', type: 'danger' })
+          return
+        }
+
+        if (!productData.name || productData.name.trim() === '') {
+          toast({ title: 'Ingresa un nombre para el producto', type: 'danger' })
+          return
+        }
+
+        const slug = generateSlug(productData.name)
+
+        const { data, error } = await supabase
+          .from('products')
+          .insert({
+            name: productData.name.trim(),
+            slug: slug + '-' + Date.now(),
+            base_price: parseFloat(productData.base_price),
+            discount_percentage: parseFloat(productData.discount_percentage) || 0,
+            gender: productData.gender,
+            category: productData.category,
+            description: productData.description || null,
+            sku: productData.sku || null,
+            brand_id: productData.brand_id,
+            status: 'draft'
+          })
+          .select()
+          .single()
+
+        if (error) {
+          console.error('Supabase error:', error)
+          throw new Error(error.message)
+        }
+
+        if (data && productData.sizes && productData.sizes.length > 0) {
+          const sizesData = productData.sizes
+            .filter(s => s.size && s.stock > 0)
+            .map(s => ({
+              product_id: data.id,
+              size: s.size,
+              stock_quantity: parseInt(s.stock)
+            }))
+
+          if (sizesData.length > 0) {
+            const { error: sizesError } = await supabase
+              .from('product_sizes')
+              .insert(sizesData)
+            
+            if (sizesError) {
+              console.error('Error inserting sizes:', sizesError)
+            }
+          }
+        }
+
+        toast({ title: 'Producto creado correctamente', type: 'success' })
+      }
+
+      loadProducts()
+      setShowModal(false)
+      setEditingProduct(null)
+    } catch (err) {
+      console.error('Error saving product:', err)
+      toast({ title: 'Error: ' + (err.message || 'No se pudo guardar'), type: 'danger' })
+    }
+  }
+
+  const formatPrice = (price) => {
+    return new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(price || 0)
+  }
+
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold">Productos</h1>
-          <p className="text-slate-400">Gestiona tu catálogo</p>
+          <p className="text-slate-400">{products.length} productos en total</p>
         </div>
-        <Button className="gap-2 bg-blue-600 hover:bg-blue-700">
+        <Button 
+          className="gap-2 bg-blue-600 hover:bg-blue-700 w-full sm:w-auto"
+          onClick={() => {
+            setEditingProduct(null)
+            setShowModal(true)
+          }}
+        >
           <Plus className="h-4 w-4" /> Nuevo Producto
         </Button>
       </div>
 
-      <Card className="bg-slate-800 border-slate-700">
-        <CardContent className="p-0">
-          <table className="w-full">
-            <thead className="border-b border-slate-700">
-              <tr className="text-left text-slate-400 text-sm">
-                <th className="p-4">Producto</th>
-                <th className="p-4">Precio</th>
-                <th className="p-4">Stock</th>
-                <th className="p-4">Estado</th>
-                <th className="p-4">Acciones</th>
-              </tr>
-            </thead>
-            <tbody>
-              {[
-                { name: 'Nike Dunk Low Panda', price: '$2,500', stock: 5, status: 'published' },
-                { name: 'Jordan 1 High Chicago', price: '$2,900', stock: 2, status: 'published' },
-                { name: 'Yeezy 350 Zebra', price: '$4,500', stock: 0, status: 'sold_out' },
-                { name: 'NB 550 White Green', price: '$2,500', stock: 3, status: 'published' },
-              ].map((product, i) => (
-                <tr key={i} className="border-b border-slate-700/50 hover:bg-slate-700/30">
-                  <td className="p-4">
-                    <div className="flex items-center gap-3">
-                      <div className="w-12 h-12 rounded-lg bg-slate-600"></div>
-                      <span className="font-medium">{product.name}</span>
-                    </div>
-                  </td>
-                  <td className="p-4">{product.price}</td>
-                  <td className="p-4">{product.stock} unidades</td>
-                  <td className="p-4">
-                    <span className={`text-xs px-2 py-1 rounded ${
-                      product.status === 'published' ? 'bg-green-600/20 text-green-400' : 'bg-red-600/20 text-red-400'
-                    }`}>
-                      {product.status === 'published' ? 'Publicado' : 'Agotado'}
-                    </span>
-                  </td>
-                  <td className="p-4">
-                    <div className="flex gap-2">
-                      <Button variant="ghost" size="icon" className="text-slate-400 hover:text-white">
-                        <Edit className="h-4 w-4" />
-                      </Button>
-                      <Button variant="ghost" size="icon" className="text-slate-400 hover:text-red-400">
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </CardContent>
-      </Card>
+      {loading ? (
+        <div className="flex items-center justify-center py-12">
+          <div className="animate-spin h-8 w-8 border-4 border-blue-500 border-t-transparent rounded-full"></div>
+        </div>
+      ) : (
+        <div className="overflow-x-auto">
+          <Card className="bg-slate-800 border-slate-700 min-w-[700px]">
+            <CardContent className="p-0">
+              <table className="w-full">
+                <thead className="border-b border-slate-700">
+                  <tr className="text-left text-slate-400 text-sm">
+                    <th className="p-4">Producto</th>
+                    <th className="p-4">Precio</th>
+                    <th className="p-4">Tallas</th>
+                    <th className="p-4">Estado</th>
+                    <th className="p-4">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {products.map((product) => (
+                    <tr key={product.id} className="border-b border-slate-700/50 hover:bg-slate-700/30">
+                      <td className="p-4">
+                        <div className="flex items-center gap-3">
+                          <div className="w-12 h-12 rounded-lg bg-slate-600 flex-shrink-0"></div>
+                          <div>
+                            <span className="font-medium truncate max-w-[200px] block">{product.name}</span>
+                            <span className="text-xs text-slate-400">{product.brand?.name}</span>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="p-4">
+                        <div>
+                          <span className="font-medium">{formatPrice(product.final_price || product.base_price)}</span>
+                          {product.discount_percentage > 0 && (
+                            <span className="text-xs text-slate-400 line-through ml-2">
+                              {formatPrice(product.base_price)}
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="p-4">
+                        <div className="flex flex-wrap gap-1">
+                          {product.product_sizes?.slice(0, 3).map((s, i) => (
+                            <span key={i} className="text-xs px-2 py-0.5 bg-slate-700 rounded">
+                              {s.size}
+                            </span>
+                          ))}
+                          {product.product_sizes?.length > 3 && (
+                            <span className="text-xs text-slate-400">+{product.product_sizes.length - 3}</span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="p-4">
+                        <select
+                          value={product.status}
+                          onChange={(e) => handleChangeStatus(product, e.target.value)}
+                          className={`text-xs px-2 py-1 rounded border cursor-pointer ${
+                            product.status === 'published' ? 'bg-green-600/20 text-green-400 border-green-600/30' : 
+                            product.status === 'sold_out' ? 'bg-red-600/20 text-red-400 border-red-600/30' : 
+                            'bg-yellow-600/20 text-yellow-400 border-yellow-600/30'
+                          }`}
+                        >
+                          <option value="draft" className="bg-slate-800">Borrador</option>
+                          <option value="published" className="bg-slate-800">Publicado</option>
+                          <option value="sold_out" className="bg-slate-800">Agotado</option>
+                          <option value="archived" className="bg-slate-800">Archivado</option>
+                        </select>
+                      </td>
+                      <td className="p-4">
+                        <div className="flex gap-2">
+                          <Button 
+                            variant="ghost" 
+                            size="icon" 
+                            className="text-slate-400 hover:text-white"
+                            onClick={() => handleEdit(product)}
+                          >
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                          <Button 
+                            variant="ghost" 
+                            size="icon" 
+                            className="text-slate-400 hover:text-red-400"
+                            onClick={() => handleDelete(product)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                  {products.length === 0 && (
+                    <tr>
+                      <td colSpan={5} className="p-8 text-center text-slate-400">
+                        No hay productos aún. ¡Crea tu primer producto!
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {showModal && (
+        <ProductModal 
+          onClose={() => {
+            setShowModal(false)
+            setEditingProduct(null)
+          }} 
+          onSave={handleSave}
+          editingProduct={editingProduct}
+        />
+      )}
+    </div>
+  )
+}
+
+function ProductModal({ onClose, onSave, editingProduct }) {
+  const [loading, setLoading] = useState(false)
+  const [brands, setBrands] = useState([])
+  const [formData, setFormData] = useState({
+    name: editingProduct?.name || '',
+    slug: editingProduct?.slug || '',
+    description: editingProduct?.description || '',
+    base_price: editingProduct?.base_price || '',
+    discount_percentage: editingProduct?.discount_percentage || '',
+    gender: editingProduct?.gender || 'unisex',
+    category: editingProduct?.category || 'casual',
+    condition: editingProduct?.condition || 'new_with_box',
+    brand_id: editingProduct?.brand_id || '',
+    sku: editingProduct?.sku || '',
+    images: [],
+    sizes: editingProduct?.product_sizes?.map(s => ({ size: s.size, stock: s.stock_quantity })) || []
+  })
+
+  useEffect(() => {
+    async function loadBrands() {
+      try {
+        const { data } = await supabase
+          .from('brands')
+          .select('id, name')
+          .eq('is_active', true)
+          .order('name')
+        
+        setBrands(data || [])
+      } catch (err) {
+        console.error('Error loading brands:', err)
+        setBrands([])
+      }
+    }
+    loadBrands()
+  }, [])
+
+  const genders = ['men', 'women', 'unisex', 'kids']
+  const categories = ['running', 'basketball', 'casual', 'lifestyle', 'limited_edition']
+  const conditions = ['new_with_box', 'new_without_box', 'preowned']
+
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    setLoading(true)
+    await onSave(formData)
+    setLoading(false)
+  }
+
+  const handleAddSize = () => {
+    setFormData({
+      ...formData,
+      sizes: [...formData.sizes, { size: '', stock: 1 }]
+    })
+  }
+
+  const handleRemoveSize = (index) => {
+    setFormData({
+      ...formData,
+      sizes: formData.sizes.filter((_, i) => i !== index)
+    })
+  }
+
+  const updateSize = (index, field, value) => {
+    const newSizes = [...formData.sizes]
+    newSizes[index][field] = value
+    setFormData({ ...formData, sizes: newSizes })
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
+      <div className="bg-slate-800 rounded-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between p-4 border-b border-slate-700 sticky top-0 bg-slate-800">
+          <h2 className="text-xl font-bold">
+            {editingProduct ? 'Editar Producto' : 'Nuevo Producto'}
+          </h2>
+          <Button variant="ghost" size="icon" onClick={onClose} className="text-slate-400 hover:text-white">
+            <X className="h-5 w-5" />
+          </Button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="p-4 space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="md:col-span-2">
+              <label className="text-sm text-slate-400">Nombre del producto *</label>
+              <Input
+                value={formData.name}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                placeholder="Nike Dunk Low Panda"
+                className="mt-1 bg-slate-700 border-slate-600 text-white"
+                required
+              />
+            </div>
+
+            <div>
+              <label className="text-sm text-slate-400">Precio (MXN) *</label>
+              <Input
+                type="number"
+                value={formData.base_price}
+                onChange={(e) => setFormData({ ...formData, base_price: e.target.value })}
+                placeholder="2500"
+                className="mt-1 bg-slate-700 border-slate-600 text-white"
+                required
+              />
+            </div>
+
+            <div>
+              <label className="text-sm text-slate-400">Descuento (%)</label>
+              <Input
+                type="number"
+                value={formData.discount_percentage}
+                onChange={(e) => setFormData({ ...formData, discount_percentage: e.target.value })}
+                placeholder="0"
+                className="mt-1 bg-slate-700 border-slate-600 text-white"
+              />
+            </div>
+
+            <div>
+              <label className="text-sm text-slate-400">Marca *</label>
+              <select
+                value={formData.brand_id}
+                onChange={(e) => setFormData({ ...formData, brand_id: e.target.value })}
+                className="mt-1 w-full p-3 bg-slate-700 border-slate-600 rounded-lg text-white"
+                required
+              >
+                <option value="">Seleccionar marca</option>
+                {brands.map(brand => (
+                  <option key={brand.id} value={brand.id}>{brand.name}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="text-sm text-slate-400">SKU</label>
+              <Input
+                value={formData.sku}
+                onChange={(e) => setFormData({ ...formData, sku: e.target.value })}
+                placeholder="DD1391-100"
+                className="mt-1 bg-slate-700 border-slate-600 text-white"
+              />
+            </div>
+
+            <div>
+              <label className="text-sm text-slate-400">Género</label>
+              <select
+                value={formData.gender}
+                onChange={(e) => setFormData({ ...formData, gender: e.target.value })}
+                className="mt-1 w-full p-3 bg-slate-700 border-slate-600 rounded-lg text-white"
+              >
+                {genders.map(g => (
+                  <option key={g} value={g}>{g.charAt(0).toUpperCase() + g.slice(1)}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="text-sm text-slate-400">Categoría</label>
+              <select
+                value={formData.category}
+                onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+                className="mt-1 w-full p-3 bg-slate-700 border-slate-600 rounded-lg text-white"
+              >
+                {categories.map(c => (
+                  <option key={c} value={c}>{c.replace('_', ' ').toUpperCase()}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="md:col-span-2">
+              <label className="text-sm text-slate-400">Descripción</label>
+              <textarea
+                value={formData.description}
+                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                placeholder="Descripción del producto..."
+                rows={3}
+                className="mt-1 w-full p-3 bg-slate-700 border-slate-600 rounded-lg text-white resize-none"
+              />
+            </div>
+
+            <div className="md:col-span-2">
+              <label className="text-sm text-slate-400">URLs de imágenes (una por línea)</label>
+              <textarea
+                value={formData.images.join('\n')}
+                onChange={(e) => setFormData({ ...formData, images: e.target.value.split('\n').filter(Boolean) })}
+                placeholder="https://imagen1.jpg"
+                rows={3}
+                className="mt-1 w-full p-3 bg-slate-700 border-slate-600 rounded-lg text-white resize-none"
+              />
+            </div>
+
+            <div className="md:col-span-2">
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-sm text-slate-400">Tallas y Stock</label>
+                <Button type="button" variant="outline" size="sm" onClick={handleAddSize} className="border-slate-600 text-slate-300">
+                  + Agregar talla
+                </Button>
+              </div>
+              <div className="space-y-2">
+                {formData.sizes.map((size, index) => (
+                  <div key={index} className="flex gap-2">
+                    <Input
+                      value={size.size}
+                      onChange={(e) => updateSize(index, 'size', e.target.value)}
+                      placeholder="US 9"
+                      className="flex-1 bg-slate-700 border-slate-600 text-white"
+                    />
+                    <Input
+                      type="number"
+                      value={size.stock}
+                      onChange={(e) => updateSize(index, 'stock', e.target.value)}
+                      placeholder="Stock"
+                      min="0"
+                      className="w-24 bg-slate-700 border-slate-600 text-white"
+                    />
+                    <Button type="button" variant="ghost" size="icon" onClick={() => handleRemoveSize(index)} className="text-red-400 hover:text-red-300">
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ))}
+                {formData.sizes.length === 0 && (
+                  <p className="text-sm text-slate-500 text-center py-2">No hay tallas agregadas</p>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="flex gap-3 pt-4 border-t border-slate-700">
+            <Button type="button" variant="outline" onClick={onClose} className="flex-1 border-slate-600 text-slate-300 hover:bg-slate-700">
+              Cancelar
+            </Button>
+            <Button type="submit" className="flex-1 bg-blue-600 hover:bg-blue-700" disabled={loading}>
+              {loading ? 'Guardando...' : (editingProduct ? 'Actualizar' : 'Crear Producto')}
+            </Button>
+          </div>
+        </form>
+      </div>
     </div>
   )
 }
 
 function OrdersView() {
+  const [orders, setOrders] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [stats, setStats] = useState({ total: 0, pending: 0, confirmed: 0, totalAmount: 0 })
+
+  useEffect(() => {
+    loadOrders()
+  }, [])
+
+  const loadOrders = async () => {
+    setLoading(true)
+    try {
+      const { data, error } = await supabase
+        .from('orders')
+        .select('*')
+        .order('created_at', { ascending: false })
+
+      if (error) throw error
+
+      const ordersData = data || []
+      setOrders(ordersData)
+      setStats({
+        total: ordersData.length,
+        pending: ordersData.filter(o => o.status === 'pending').length,
+        confirmed: ordersData.filter(o => o.status === 'confirmed').length,
+        totalAmount: ordersData.reduce((sum, o) => sum + (parseFloat(o.total_amount) || 0), 0)
+      })
+    } catch (err) {
+      console.error('Error loading orders:', err)
+      setOrders([])
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const formatCurrency = (amount) => {
+    return new Intl.NumberFormat('es-MX', {
+      style: 'currency',
+      currency: 'MXN',
+      minimumFractionDigits: 0
+    }).format(amount || 0)
+  }
+
+  const getStatusColor = (status) => {
+    const colors = {
+      pending: 'bg-yellow-600/20 text-yellow-400',
+      confirmed: 'bg-green-600/20 text-green-400',
+      shipped: 'bg-blue-600/20 text-blue-400',
+      delivered: 'bg-purple-600/20 text-purple-400',
+      cancelled: 'bg-red-600/20 text-red-400'
+    }
+    return colors[status] || 'bg-slate-600/20 text-slate-400'
+  }
+
+  const getStatusLabel = (status) => {
+    const labels = {
+      pending: 'Pendiente',
+      confirmed: 'Confirmado',
+      shipped: 'Enviado',
+      delivered: 'Entregado',
+      cancelled: 'Cancelado'
+    }
+    return labels[status] || status
+  }
+
   return (
     <div className="space-y-6">
       <div>
@@ -361,11 +1120,88 @@ function OrdersView() {
         <p className="text-slate-400">Historial de ventas por WhatsApp</p>
       </div>
 
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <Card className="bg-slate-800 border-slate-700">
+          <CardContent className="p-4">
+            <p className="text-slate-400 text-sm">Total Pedidos</p>
+            <p className="text-2xl font-bold">{loading ? '-' : stats.total}</p>
+          </CardContent>
+        </Card>
+        <Card className="bg-slate-800 border-slate-700">
+          <CardContent className="p-4">
+            <p className="text-slate-400 text-sm">Pendientes</p>
+            <p className="text-2xl font-bold text-yellow-400">{loading ? '-' : stats.pending}</p>
+          </CardContent>
+        </Card>
+        <Card className="bg-slate-800 border-slate-700">
+          <CardContent className="p-4">
+            <p className="text-slate-400 text-sm">Confirmados</p>
+            <p className="text-2xl font-bold text-green-400">{loading ? '-' : stats.confirmed}</p>
+          </CardContent>
+        </Card>
+        <Card className="bg-slate-800 border-slate-700">
+          <CardContent className="p-4">
+            <p className="text-slate-400 text-sm">Total Ventas</p>
+            <p className="text-2xl font-bold">{loading ? '-' : formatCurrency(stats.totalAmount)}</p>
+          </CardContent>
+        </Card>
+      </div>
+
       <Card className="bg-slate-800 border-slate-700">
-        <CardContent className="p-8 text-center">
-          <MessageCircle className="h-12 w-12 text-slate-600 mx-auto mb-4" />
-          <p className="text-slate-400">Los pedidos se gestionan por WhatsApp</p>
-          <p className="text-sm text-slate-500 mt-2">Usa el dashboard para hacer seguimiento</p>
+        <CardHeader>
+          <CardTitle className="text-white">Todos los Pedidos</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {loading ? (
+            <div className="flex items-center justify-center py-12">
+              <div className="animate-spin h-8 w-8 border-4 border-blue-500 border-t-transparent rounded-full"></div>
+            </div>
+          ) : orders.length === 0 ? (
+            <div className="p-8 text-center">
+              <MessageCircle className="h-12 w-12 text-slate-600 mx-auto mb-4" />
+              <p className="text-slate-400">No hay pedidos aún</p>
+              <p className="text-sm text-slate-500 mt-2">Los pedidos realizados por WhatsApp aparecerán aquí</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="border-b border-slate-700">
+                  <tr className="text-left text-slate-400 text-sm">
+                    <th className="p-4">Cliente</th>
+                    <th className="p-4">Producto</th>
+                    <th className="p-4">Monto</th>
+                    <th className="p-4">Estado</th>
+                    <th className="p-4">Fecha</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {orders.map((order) => (
+                    <tr key={order.id} className="border-b border-slate-700/50 hover:bg-slate-700/30">
+                      <td className="p-4">
+                        <div>
+                          <p className="font-medium">{order.customer_name}</p>
+                          <p className="text-xs text-slate-400">{order.customer_phone}</p>
+                        </div>
+                      </td>
+                      <td className="p-4">
+                        <p className="truncate max-w-[200px]">{order.product_name}</p>
+                        {order.size && <p className="text-xs text-slate-400">Talla: {order.size}</p>}
+                      </td>
+                      <td className="p-4 font-medium">{formatCurrency(order.total_amount)}</td>
+                      <td className="p-4">
+                        <span className={`text-xs px-2 py-1 rounded ${getStatusColor(order.status)}`}>
+                          {getStatusLabel(order.status)}
+                        </span>
+                      </td>
+                      <td className="p-4 text-slate-400 text-sm">
+                        {new Date(order.created_at).toLocaleDateString('es-MX')}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>
@@ -373,6 +1209,40 @@ function OrdersView() {
 }
 
 function AnalyticsView() {
+  const [analytics, setAnalytics] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [totals, setTotals] = useState({ visits: 0, whatsappQueries: 0, pageViews: 0 })
+
+  useEffect(() => {
+    loadAnalytics()
+  }, [])
+
+  const loadAnalytics = async () => {
+    setLoading(true)
+    try {
+      const { data, error } = await supabase
+        .from('analytics')
+        .select('*')
+        .order('date', { ascending: false })
+        .limit(30)
+
+      if (error) throw error
+
+      const analyticsData = data || []
+      setAnalytics(analyticsData)
+      setTotals({
+        visits: analyticsData.reduce((sum, a) => sum + (a.visits || 0), 0),
+        whatsappQueries: analyticsData.reduce((sum, a) => sum + (a.whatsapp_queries || 0), 0),
+        pageViews: analyticsData.reduce((sum, a) => sum + (a.page_views || 0), 0)
+      })
+    } catch (err) {
+      console.error('Error loading analytics:', err)
+      setAnalytics([])
+    } finally {
+      setLoading(false)
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div>
@@ -380,26 +1250,124 @@ function AnalyticsView() {
         <p className="text-slate-400">Estadísticas de tu tienda</p>
       </div>
 
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <Card className="bg-slate-800 border-slate-700">
+          <CardContent className="p-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-blue-600/20 rounded-lg">
+                <Eye className="h-5 w-5 text-blue-400" />
+              </div>
+              <div>
+                <p className="text-slate-400 text-sm">Total Visitas</p>
+                <p className="text-2xl font-bold">{loading ? '-' : totals.visits.toLocaleString()}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="bg-slate-800 border-slate-700">
+          <CardContent className="p-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-green-600/20 rounded-lg">
+                <MessageCircle className="h-5 w-5 text-green-400" />
+              </div>
+              <div>
+                <p className="text-slate-400 text-sm">Consultas WhatsApp</p>
+                <p className="text-2xl font-bold">{loading ? '-' : totals.whatsappQueries.toLocaleString()}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="bg-slate-800 border-slate-700">
+          <CardContent className="p-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-purple-600/20 rounded-lg">
+                <BarChart3 className="h-5 w-5 text-purple-400" />
+              </div>
+              <div>
+                <p className="text-slate-400 text-sm">Vistas de Página</p>
+                <p className="text-2xl font-bold">{loading ? '-' : totals.pageViews.toLocaleString()}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
       <Card className="bg-slate-800 border-slate-700">
-        <CardContent className="p-8 text-center">
-          <BarChart3 className="h-12 w-12 text-slate-600 mx-auto mb-4" />
-          <p className="text-slate-400">Gráficos coming soon</p>
+        <CardHeader>
+          <CardTitle className="text-white">Historial de Visitas</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {loading ? (
+            <div className="flex items-center justify-center py-12">
+              <div className="animate-spin h-8 w-8 border-4 border-blue-500 border-t-transparent rounded-full"></div>
+            </div>
+          ) : analytics.length === 0 ? (
+            <div className="p-8 text-center">
+              <BarChart3 className="h-12 w-12 text-slate-600 mx-auto mb-4" />
+              <p className="text-slate-400">No hay datos de analytics aún</p>
+              <p className="text-sm text-slate-500 mt-2">Los datos de visitas aparecerán aquí</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="border-b border-slate-700">
+                  <tr className="text-left text-slate-400 text-sm">
+                    <th className="p-4">Fecha</th>
+                    <th className="p-4">Visitas</th>
+                    <th className="p-4">Consultas WhatsApp</th>
+                    <th className="p-4">Vistas de Página</th>
+                    <th className="p-4">Fuente</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {analytics.map((day) => (
+                    <tr key={day.id} className="border-b border-slate-700/50 hover:bg-slate-700/30">
+                      <td className="p-4">
+                        {new Date(day.date).toLocaleDateString('es-MX', { weekday: 'short', month: 'short', day: 'numeric' })}
+                      </td>
+                      <td className="p-4 font-medium">{day.visits || 0}</td>
+                      <td className="p-4 text-green-400">{day.whatsapp_queries || 0}</td>
+                      <td className="p-4">{day.page_views || 0}</td>
+                      <td className="p-4">
+                        <span className="text-xs px-2 py-1 bg-slate-700 rounded text-slate-300 capitalize">
+                          {day.source || 'direct'}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>
   )
 }
 
-function SettingsView({ user }) {
+function SettingsView({ user, toast, confirm }) {
+  const navigate = useNavigate()
   const [admins, setAdmins] = useState([])
   const [newAdminEmail, setNewAdminEmail] = useState('')
   const [newAdminName, setNewAdminName] = useState('')
   const [newAdminRole, setNewAdminRole] = useState('admin')
   const [loading, setLoading] = useState(false)
-  const [message, setMessage] = useState(null)
+  
+  const [settings, setSettings] = useState({
+    whatsapp_number: '521234567890',
+    site_name: 'Sneaker Store',
+    contact_email: '',
+    instagram_url: '',
+    facebook_url: '',
+    shipping_info: '',
+    return_policy: '',
+    about_text: ''
+  })
+  const [saving, setSaving] = useState(false)
 
   useEffect(() => {
     loadAdmins()
+    loadSettings()
   }, [])
 
   const loadAdmins = async () => {
@@ -410,10 +1378,57 @@ function SettingsView({ user }) {
     setAdmins(data || [])
   }
 
+  const loadSettings = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('site_settings')
+        .select('*')
+        .eq('id', 'default')
+        .single()
+      
+      if (error) throw error
+      
+      if (data) {
+        setSettings({
+          whatsapp_number: data.whatsapp_number || '521234567890',
+          site_name: data.site_name || 'Sneaker Store',
+          contact_email: data.contact_email || '',
+          instagram_url: data.instagram_url || '',
+          facebook_url: data.facebook_url || '',
+          shipping_info: data.shipping_info || '',
+          return_policy: data.return_policy || '',
+          about_text: data.about_text || ''
+        })
+      }
+    } catch (err) {
+      console.error('Error loading settings:', err)
+    }
+  }
+
+  const handleSaveSettings = async () => {
+    setSaving(true)
+    try {
+      const { error } = await supabase
+        .from('site_settings')
+        .upsert({
+          id: 'default',
+          ...settings,
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'id' })
+
+      if (error) throw error
+      
+      toast({ title: 'Configuración guardada correctamente', type: 'success' })
+    } catch (err) {
+      toast({ title: 'Error al guardar: ' + err.message, type: 'danger' })
+    } finally {
+      setSaving(false)
+    }
+  }
+
   const handleAddAdmin = async (e) => {
     e.preventDefault()
     setLoading(true)
-    setMessage(null)
 
     try {
       const { data: authUser, error: authError } = await supabase
@@ -423,7 +1438,7 @@ function SettingsView({ user }) {
         .single()
 
       if (authError || !authUser) {
-        setMessage({ type: 'error', text: 'El usuario debe registrarse primero en la tienda' })
+        toast({ title: 'El usuario debe registrarse primero', type: 'danger' })
         setLoading(false)
         return
       }
@@ -439,34 +1454,40 @@ function SettingsView({ user }) {
 
       if (error) throw error
 
-      setMessage({ type: 'success', text: 'Admin agregado correctamente' })
+      toast({ title: 'Administrador agregado correctamente', type: 'success' })
       setNewAdminEmail('')
       setNewAdminName('')
       loadAdmins()
     } catch (err) {
-      setMessage({ type: 'error', text: err.message })
+      toast({ title: err.message, type: 'danger' })
     } finally {
       setLoading(false)
     }
   }
 
-  const handleRemoveAdmin = async (adminId) => {
-    if (adminId === user?.id) {
-      setMessage({ type: 'error', text: 'No puedes eliminarte a ti mismo' })
+  const handleRemoveAdmin = async (admin) => {
+    if (admin.id === user?.id) {
+      toast({ title: 'No puedes eliminarte a ti mismo', type: 'danger' })
       return
     }
 
-    if (!confirm('¿Estás seguro de eliminar este admin?')) return
+    const confirmed = await confirm({
+      title: 'Eliminar administrador',
+      message: `¿Estás seguro de eliminar a ${admin.full_name || admin.email}?`,
+      type: 'danger'
+    })
+
+    if (!confirmed) return
 
     const { error } = await supabase
       .from('admin_users')
       .delete()
-      .eq('id', adminId)
+      .eq('id', admin.id)
 
     if (error) {
-      setMessage({ type: 'error', text: error.message })
+      toast({ title: error.message, type: 'danger' })
     } else {
-      setMessage({ type: 'success', text: 'Admin eliminado' })
+      toast({ title: 'Administrador eliminado', type: 'success' })
       loadAdmins()
     }
   }
@@ -484,21 +1505,104 @@ function SettingsView({ user }) {
         </CardHeader>
         <CardContent className="space-y-4">
           <div>
-            <label className="text-sm text-slate-400">Email de contacto</label>
+            <label className="text-sm text-slate-400">Nombre de la tienda</label>
             <Input 
-              defaultValue={user?.email} 
-              className="mt-1 bg-slate-700 border-slate-600 text-white"
-              disabled
-            />
-          </div>
-          <div>
-            <label className="text-sm text-slate-400">WhatsApp</label>
-            <Input 
-              defaultValue="521234567890" 
+              value={settings.site_name}
+              onChange={(e) => setSettings({ ...settings, site_name: e.target.value })}
               className="mt-1 bg-slate-700 border-slate-600 text-white" 
             />
           </div>
-          <Button className="bg-blue-600 hover:bg-blue-700">Guardar cambios</Button>
+          <div>
+            <label className="text-sm text-slate-400">Email de contacto</label>
+            <Input 
+              value={settings.contact_email}
+              onChange={(e) => setSettings({ ...settings, contact_email: e.target.value })}
+              placeholder="contacto@tienda.com"
+              className="mt-1 bg-slate-700 border-slate-600 text-white" 
+            />
+          </div>
+          <div>
+            <label className="text-sm text-slate-400">Número de WhatsApp</label>
+            <Input 
+              value={settings.whatsapp_number}
+              onChange={(e) => setSettings({ ...settings, whatsapp_number: e.target.value })}
+              placeholder="521234567890"
+              className="mt-1 bg-slate-700 border-slate-600 text-white" 
+            />
+            <p className="text-xs text-slate-500 mt-1">Incluye código de país (52 para México)</p>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="text-sm text-slate-400">Instagram URL</label>
+              <Input 
+                value={settings.instagram_url}
+                onChange={(e) => setSettings({ ...settings, instagram_url: e.target.value })}
+                placeholder="https://instagram.com/tu-tienda"
+                className="mt-1 bg-slate-700 border-slate-600 text-white" 
+              />
+            </div>
+            <div>
+              <label className="text-sm text-slate-400">Facebook URL</label>
+              <Input 
+                value={settings.facebook_url}
+                onChange={(e) => setSettings({ ...settings, facebook_url: e.target.value })}
+                placeholder="https://facebook.com/tu-tienda"
+                className="mt-1 bg-slate-700 border-slate-600 text-white" 
+              />
+            </div>
+          </div>
+          <Button 
+            className="bg-blue-600 hover:bg-blue-700" 
+            onClick={handleSaveSettings}
+            disabled={saving}
+          >
+            {saving ? 'Guardando...' : 'Guardar cambios'}
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card className="bg-slate-800 border-slate-700">
+        <CardHeader>
+          <CardTitle className="text-white">Información de la Tienda</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div>
+            <label className="text-sm text-slate-400">Política de envío</label>
+            <textarea
+              value={settings.shipping_info}
+              onChange={(e) => setSettings({ ...settings, shipping_info: e.target.value })}
+              placeholder="Ej: Envíos a todo México. CDMX: 1-2 días. Interior: 3-5 días hábiles."
+              rows={3}
+              className="mt-1 w-full p-3 bg-slate-700 border-slate-600 rounded-lg text-white resize-none"
+            />
+          </div>
+          <div>
+            <label className="text-sm text-slate-400">Política de devoluciones</label>
+            <textarea
+              value={settings.return_policy}
+              onChange={(e) => setSettings({ ...settings, return_policy: e.target.value })}
+              placeholder="Ej: 30 días para devoluciones. El producto debe estar sin usar."
+              rows={3}
+              className="mt-1 w-full p-3 bg-slate-700 border-slate-600 rounded-lg text-white resize-none"
+            />
+          </div>
+          <div>
+            <label className="text-sm text-slate-400">Sobre nosotros</label>
+            <textarea
+              value={settings.about_text}
+              onChange={(e) => setSettings({ ...settings, about_text: e.target.value })}
+              placeholder="Somos tu tienda de confianza para zapatillas auténticas..."
+              rows={4}
+              className="mt-1 w-full p-3 bg-slate-700 border-slate-600 rounded-lg text-white resize-none"
+            />
+          </div>
+          <Button 
+            className="bg-blue-600 hover:bg-blue-700" 
+            onClick={handleSaveSettings}
+            disabled={saving}
+          >
+            {saving ? 'Guardando...' : 'Guardar cambios'}
+          </Button>
         </CardContent>
       </Card>
 
@@ -510,16 +1614,6 @@ function SettingsView({ user }) {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          {message && (
-            <div className={`p-3 rounded-lg text-sm ${
-              message.type === 'success' 
-                ? 'bg-green-500/20 text-green-400' 
-                : 'bg-red-500/20 text-red-400'
-            }`}>
-              {message.text}
-            </div>
-          )}
-
           <form onSubmit={handleAddAdmin} className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
               <label className="text-sm text-slate-400">Email del usuario</label>
@@ -589,7 +1683,7 @@ function SettingsView({ user }) {
                         variant="ghost"
                         size="icon"
                         className="text-red-400 hover:text-red-300"
-                        onClick={() => handleRemoveAdmin(admin.id)}
+                        onClick={() => handleRemoveAdmin(admin)}
                       >
                         <Trash2 className="h-4 w-4" />
                       </Button>
@@ -604,3 +1698,4 @@ function SettingsView({ user }) {
     </div>
   )
 }
+

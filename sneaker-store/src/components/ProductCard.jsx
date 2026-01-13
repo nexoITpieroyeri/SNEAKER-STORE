@@ -21,12 +21,14 @@ export function ProductCard({ product }) {
     return new Intl.NumberFormat('es-MX', {
       style: 'currency',
       currency: 'MXN'
-    }).format(price)
+    }).format(price || 0)
   }
 
   const hasDiscount = product.discount_percentage > 0
-  const finalPrice = product.final_price || product.base_price
-  const originalPrice = product.base_price
+  const finalPrice = product.final_price || product.base_price || 0
+  const originalPrice = product.base_price || 0
+
+  const imageUrl = product.images?.[0]?.url || product.images?.[0]?.image_url || null
 
   return (
     <Link 
@@ -34,9 +36,9 @@ export function ProductCard({ product }) {
       className="group block bg-white rounded-2xl shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden border border-slate-100"
     >
       <div className="relative aspect-square overflow-hidden bg-slate-100">
-        {product.images && product.images.length > 0 ? (
+        {imageUrl ? (
           <img
-            src={product.images[0].image_url}
+            src={imageUrl}
             alt={product.name}
             className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
           />
@@ -49,6 +51,14 @@ export function ProductCard({ product }) {
         {hasDiscount && (
           <div className="absolute top-3 left-3 px-2 py-1 bg-red-500 text-white text-xs font-bold rounded-full">
             -{product.discount_percentage}%
+          </div>
+        )}
+
+        {!product.has_stock && (
+          <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+            <span className="bg-red-500 text-white px-3 py-1 text-sm font-bold rounded">
+              Agotado
+            </span>
           </div>
         )}
 
