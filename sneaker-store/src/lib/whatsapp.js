@@ -40,7 +40,7 @@ export function generateWhatsAppMessage({
 📦 *Producto:* ${product.name}
 👟 *Talla:* ${selectedSize}
 📏 *Cantidad:* ${quantity}
-💰 *Precio:* $${(product.final_price || product.base_price).toLocaleString('es-MX')} MXN
+💰 *Precio:* $${(product.final_price || product.base_price).toLocaleString('es-PE')} PEN
 
 ¿Está disponible en esta talla? ¿Cuáles son los métodos de pago y tiempo de entrega?
 
@@ -49,7 +49,7 @@ export function generateWhatsAppMessage({
       return `¡Hola! Me interesa el siguiente producto de ${siteName}:
 
 📦 *Producto:* ${product.name}
-💰 *Precio:* $${(product.final_price || product.base_price).toLocaleString('es-MX')} MXN
+💰 *Precio:* $${(product.final_price || product.base_price).toLocaleString('es-PE')} PEN
 
 ¿Tienes más colores/tallas disponibles? ¿Está nuevo con caja?
 
@@ -63,12 +63,12 @@ export function generateWhatsAppMessage({
 📦 *Producto:* ${product.name}
 👟 *Talla:* ${selectedSize}
 📏 *Cantidad:* ${quantity}
-💰 *Precio:* $${(product.final_price || product.base_price).toLocaleString('es-MX')} MXN
-💵 *Total:* $${((product.final_price || product.base_price) * quantity).toLocaleString('es-MX')} MXN
+💰 *Precio:* $${(product.final_price || product.base_price).toLocaleString('es-PE')} PEN
+💵 *Total:* $${((product.final_price || product.base_price) * quantity).toLocaleString('es-PE')} PEN
 
 📛 *Nombre:* ${customerName || '[Tu Nombre]'}
 
-¿Qué métodos de pago aceptan? ¿Confirmas disponibilidad?
+¿Qué métodos de pago aceptan? ¿Confirman disponibilidad?
 
 ¡Gracias!`
   }
@@ -86,10 +86,10 @@ export function generateWhatsAppMessage({
       message += `${index + 1}. *${item.name}*\n`
       message += `   👟 Talla: ${item.selectedSize || 'Sin especificar'}\n`
       message += `   📏 Cantidad: ${item.quantity || 1}\n`
-      message += `   💰 Precio: $${price.toLocaleString('es-MX')} MXN\n\n`
+      message += `   💰 Precio: $${price.toLocaleString('es-PE')} PEN\n\n`
     })
     
-    message += `💵 *Total del pedido:* $${subtotal.toLocaleString('es-MX')} MXN`
+    message += `💵 *Total del pedido:* $${subtotal.toLocaleString('es-PE')} PEN`
     message += `\n📛 *Nombre:* ${customerName || '[Tu Nombre]'}`
     message += `\n\n¿Qué métodos de pago aceptan? ¿Confirman disponibilidad?\n\n¡Gracias!`
     
@@ -125,5 +125,39 @@ export async function handleWhatsAppClick({
   })
   openWhatsApp(message, settings.whatsapp_number)
   
+  await trackWhatsAppClick()
+  
   return { message, phoneNumber: settings.whatsapp_number }
+}
+
+async function trackWhatsAppClick() {
+  try {
+    const today = new Date().toISOString().split('T')[0]
+    
+    const { data: existing } = await supabase
+      .from('analytics')
+      .select('id, whatsapp_queries')
+      .eq('date', today)
+      .single()
+    
+    if (existing) {
+      await supabase
+        .from('analytics')
+        .update({ 
+          whatsapp_queries: (existing.whatsapp_queries || 0) + 1,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', existing.id)
+    } else {
+      await supabase
+        .from('analytics')
+        .insert({
+          date: today,
+          visits: 0,
+          whatsapp_queries: 1
+        })
+    }
+  } catch (err) {
+    console.error('Error tracking WhatsApp click:', err)
+  }
 }

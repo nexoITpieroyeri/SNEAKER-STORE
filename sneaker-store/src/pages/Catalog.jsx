@@ -44,7 +44,7 @@ export function CatalogFilters({ brands, filters, setFilters }) {
                 onChange={() => setFilters({ ...filters, gender })}
                 className="border-gray-300"
               />
-              <span className="text-sm capitalize">{gender}</span>
+              <span className="text-sm capitalize">{gender === 'men' ? 'Hombre' : gender === 'women' ? 'Mujer' : gender === 'kids' ? 'Niños' : 'Unisex'}</span>
             </label>
           ))}
           <label className="flex items-center space-x-2 cursor-pointer">
@@ -56,6 +56,32 @@ export function CatalogFilters({ brands, filters, setFilters }) {
               className="border-gray-300"
             />
             <span className="text-sm">Todos</span>
+          </label>
+        </div>
+      </div>
+
+      <div>
+        <h3 className="font-semibold mb-3">Categoría</h3>
+        <div className="space-y-2">
+          <label className="flex items-center space-x-2 cursor-pointer">
+            <input
+              type="radio"
+              name="category"
+              checked={filters.category === ''}
+              onChange={() => setFilters({ ...filters, category: '' })}
+              className="border-gray-300"
+            />
+            <span className="text-sm">Todas</span>
+          </label>
+          <label className="flex items-center space-x-2 cursor-pointer">
+            <input
+              type="radio"
+              name="category"
+              checked={filters.category === 'limited_edition'}
+              onChange={() => setFilters({ ...filters, category: 'limited_edition' })}
+              className="border-gray-300"
+            />
+            <span className="text-sm">Edición Limitada</span>
           </label>
         </div>
       </div>
@@ -81,7 +107,7 @@ export function CatalogFilters({ brands, filters, setFilters }) {
               onChange={() => setFilters({ ...filters, priceRange: '0-2000' })}
               className="border-gray-300"
             />
-            <span className="text-sm">Menos de $2,000</span>
+            <span className="text-sm">Menos de S/2,000</span>
           </label>
           <label className="flex items-center space-x-2 cursor-pointer">
             <input
@@ -91,7 +117,7 @@ export function CatalogFilters({ brands, filters, setFilters }) {
               onChange={() => setFilters({ ...filters, priceRange: '2000-4000' })}
               className="border-gray-300"
             />
-            <span className="text-sm">$2,000 - $4,000</span>
+            <span className="text-sm">S/2,000 - S/4,000</span>
           </label>
           <label className="flex items-center space-x-2 cursor-pointer">
             <input
@@ -101,7 +127,7 @@ export function CatalogFilters({ brands, filters, setFilters }) {
               onChange={() => setFilters({ ...filters, priceRange: '4000+' })}
               className="border-gray-300"
             />
-            <span className="text-sm">Más de $4,000</span>
+            <span className="text-sm">Más de S/4,000</span>
           </label>
         </div>
       </div>
@@ -109,7 +135,7 @@ export function CatalogFilters({ brands, filters, setFilters }) {
       <Button
         variant="outline"
         className="w-full"
-        onClick={() => setFilters({ search: '', brands: [], gender: '', priceRange: 'all' })}
+        onClick={() => setFilters({ search: '', brands: [], gender: '', category: '', priceRange: 'all' })}
       >
         Limpiar filtros
       </Button>
@@ -118,7 +144,7 @@ export function CatalogFilters({ brands, filters, setFilters }) {
 }
 
 export function CatalogPage() {
-  const [searchParams, setSearchParams] = useSearchParams()
+  const [searchParams] = useSearchParams()
   const [products, setProducts] = useState([])
   const [brands, setBrands] = useState([])
   const [loading, setLoading] = useState(true)
@@ -127,6 +153,7 @@ export function CatalogPage() {
     search: searchParams.get('q') || '',
     brands: searchParams.getAll('brand') || [],
     gender: searchParams.get('gender') || '',
+    category: searchParams.get('category') || '',
     priceRange: 'all',
   })
 
@@ -148,6 +175,16 @@ export function CatalogPage() {
 
     fetchBrands()
   }, [])
+
+  useEffect(() => {
+    setFilters({
+      search: searchParams.get('q') || '',
+      brands: searchParams.getAll('brand') || [],
+      gender: searchParams.get('gender') || '',
+      category: searchParams.get('category') || '',
+      priceRange: 'all',
+    })
+  }, [searchParams])
 
   useEffect(() => {
     async function fetchProducts() {
@@ -181,6 +218,10 @@ export function CatalogPage() {
 
         if (filters.gender) {
           filteredData = filteredData.filter(p => p.gender === filters.gender)
+        }
+
+        if (filters.category) {
+          filteredData = filteredData.filter(p => p.category === filters.category)
         }
 
         if (filters.priceRange !== 'all') {

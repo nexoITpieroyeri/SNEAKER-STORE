@@ -1,17 +1,31 @@
 import { Link } from 'react-router-dom'
-import { Heart, ArrowLeft, Trash2 } from 'lucide-react'
+import { Heart, ArrowLeft, Trash2, MessageCircle } from 'lucide-react'
 import { Button } from '../components/ui/Button'
 import { Card, CardContent } from '../components/ui/Card'
 import { useCartStore } from '../store/favoritesStore'
+import { handleWhatsAppClick } from '../lib/whatsapp'
 
 export function FavoritesPage() {
   const { favorites, removeFromFavorites } = useCartStore()
 
   const formatPrice = (price) => {
-    return new Intl.NumberFormat('es-MX', {
+    return new Intl.NumberFormat('es-PE', {
       style: 'currency',
-      currency: 'MXN'
+      currency: 'PEN'
     }).format(price)
+  }
+
+  const handleWhatsApp = async (product) => {
+    await handleWhatsAppClick({
+      product: {
+        id: product.id,
+        name: product.name,
+        base_price: product.base_price,
+        final_price: product.final_price || product.base_price,
+        sku: product.sku
+      },
+      type: 'inquiry'
+    })
   }
 
   if (favorites.length === 0) {
@@ -44,7 +58,7 @@ export function FavoritesPage() {
               <div className="aspect-square overflow-hidden bg-muted">
                 {product.images && product.images.length > 0 ? (
                   <img
-                    src={product.images[0].image_url}
+                    src={product.images[0].image_url || product.images[0].url}
                     alt={product.name}
                     className="h-full w-full object-cover transition-transform group-hover:scale-105"
                   />
@@ -76,11 +90,20 @@ export function FavoritesPage() {
                 </Button>
               </div>
 
-              <div className="mt-2">
+              <div className="mt-2 mb-4">
                 <span className="text-lg font-bold">
                   {formatPrice(product.final_price || product.base_price)}
                 </span>
               </div>
+
+              <Button
+                onClick={() => handleWhatsApp(product)}
+                className="w-full gap-2 bg-green-500 hover:bg-green-600 text-white"
+                size="sm"
+              >
+                <MessageCircle className="h-4 w-4" />
+                Consultar por WhatsApp
+              </Button>
             </CardContent>
           </Card>
         ))}

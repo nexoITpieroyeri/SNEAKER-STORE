@@ -18,9 +18,9 @@ export function ProductCard({ product }) {
   }
 
   const formatPrice = (price) => {
-    return new Intl.NumberFormat('es-MX', {
+    return new Intl.NumberFormat('es-PE', {
       style: 'currency',
-      currency: 'MXN'
+      currency: 'PEN'
     }).format(price || 0)
   }
 

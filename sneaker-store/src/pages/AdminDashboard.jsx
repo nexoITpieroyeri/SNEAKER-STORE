@@ -21,17 +21,12 @@ const navItems = [
 
 export function AdminDashboard() {
   const [user, setUser] = useState(null)
-  const [isAdmin, setIsAdmin] = useState(false)
   const [loading, setLoading] = useState(true)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [currentView, setCurrentView] = useState('dashboard')
   const navigate = useNavigate()
   const { confirm, confirmState } = useConfirm()
   const { toast, ToastContainer } = useToast()
-
-  useEffect(() => {
-    checkAdmin()
-  }, [])
 
   const checkAdmin = async () => {
     try {
@@ -54,12 +49,18 @@ export function AdminDashboard() {
         return
       }
 
-      setIsAdmin(true)
       setLoading(false)
-    } catch (e) {
+    } catch {
       navigate('/login')
     }
   }
+
+  useEffect(() => {
+    const init = async () => {
+      await checkAdmin()
+    }
+    init()
+  }, [])
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
@@ -77,17 +78,17 @@ export function AdminDashboard() {
   const renderContent = () => {
     switch (currentView) {
       case 'dashboard':
-        return <DashboardView />
+        return <DashboardView setCurrentView={setCurrentView} />
       case 'products':
-        return <ProductsView confirm={confirm} toast={toast} />
+        return <ProductsView confirm={confirm} toast={toast} setCurrentView={setCurrentView} />
       case 'orders':
-        return <OrdersView />
+        return <OrdersView toast={toast} />
       case 'analytics':
         return <AnalyticsView />
       case 'settings':
         return <SettingsView user={user} toast={toast} confirm={confirm} />
       default:
-        return <DashboardView />
+        return <DashboardView setCurrentView={setCurrentView} />
     }
   }
 
@@ -172,11 +173,15 @@ export function AdminDashboard() {
   )
 }
 
-function DashboardView() {
+function DashboardView({ setCurrentView }) {
   const [loading, setLoading] = useState(true)
   const [stats, setStats] = useState({
     totalProducts: 0,
+    publishedProducts: 0,
+    soldOutProducts: 0,
     salesThisMonth: 0,
+    pendingOrders: 0,
+    totalOrders: 0,
     visitsThisMonth: 0,
     whatsappQueriesThisMonth: 0
   })
@@ -194,16 +199,22 @@ function DashboardView() {
       const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1).toISOString()
 
       const [
-        productsResult,
+        allProductsResult,
+        publishedResult,
+        soldOutResult,
         ordersResult,
+        pendingOrdersResult,
         analyticsResult
       ] = await Promise.all([
         supabase.from('products').select('id', { count: 'exact', head: true }),
+        supabase.from('products').select('id', { count: 'exact', head: true }).eq('status', 'published'),
+        supabase.from('products').select('id', { count: 'exact', head: true }).eq('status', 'sold_out'),
         supabase
           .from('orders')
-          .select('total_amount')
+          .select('id, total_amount')
           .gte('created_at', firstDayOfMonth)
           .in('status', ['confirmed', 'shipped', 'delivered']),
+        supabase.from('orders').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
         supabase
           .from('analytics')
           .select('visits, whatsapp_queries')
@@ -217,16 +228,30 @@ function DashboardView() {
 
       let visits = 0
       let whatsappQueries = 0
-      if (analyticsResult.data) {
+      if (analyticsResult.data && analyticsResult.data.length > 0) {
         visits = analyticsResult.data.reduce((sum, a) => sum + (a.visits || 0), 0)
         whatsappQueries = analyticsResult.data.reduce((sum, a) => sum + (a.whatsapp_queries || 0), 0)
+      } else {
+        await seedSampleAnalytics()
+        const { data: newAnalytics } = await supabase
+          .from('analytics')
+          .select('visits, whatsapp_queries')
+          .gte('date', firstDayOfMonth)
+        if (newAnalytics) {
+          visits = newAnalytics.reduce((sum, a) => sum + (a.visits || 0), 0)
+          whatsappQueries = newAnalytics.reduce((sum, a) => sum + (a.whatsapp_queries || 0), 0)
+        }
       }
 
       setStats({
-        totalProducts: productsResult.count || 0,
+        totalProducts: allProductsResult.count || 0,
+        publishedProducts: publishedResult.count || 0,
+        soldOutProducts: soldOutResult.count || 0,
         salesThisMonth: salesTotal,
-        visitsThisMonth: visits || Math.floor(Math.random() * 500) + 100,
-        whatsappQueriesThisMonth: whatsappQueries || Math.floor(Math.random() * 30) + 5
+        pendingOrders: pendingOrdersResult.count || 0,
+        totalOrders: ordersResult.data?.length || 0,
+        visitsThisMonth: visits,
+        whatsappQueriesThisMonth: whatsappQueries
       })
 
       const { data: products } = await supabase
@@ -248,28 +273,58 @@ function DashboardView() {
     } catch (err) {
       console.error('Error loading dashboard:', err)
       setStats({
-        totalProducts: 24,
-        salesThisMonth: 12450,
-        visitsThisMonth: 1234,
-        whatsappQueriesThisMonth: 89
+        totalProducts: 0,
+        publishedProducts: 0,
+        soldOutProducts: 0,
+        salesThisMonth: 0,
+        pendingOrders: 0,
+        totalOrders: 0,
+        visitsThisMonth: 0,
+        whatsappQueriesThisMonth: 0
       })
-      setLatestProducts([
-        { id: 1, name: 'Nike Dunk Low Panda', base_price: 2500, final_price: 2500, discount_percentage: 0, status: 'published', brand: { name: 'Nike' } },
-        { id: 2, name: 'Jordan 1 High Chicago', base_price: 3200, final_price: 2900, discount_percentage: 10, status: 'published', brand: { name: 'Jordan' } },
-        { id: 3, name: 'Yeezy 350 Zebra', base_price: 4500, final_price: 4500, discount_percentage: 0, status: 'sold_out', brand: { name: 'Yeezy' } },
-      ])
+      setLatestProducts([])
     } finally {
       setLoading(false)
     }
   }
 
   const formatCurrency = (amount) => {
-    return new Intl.NumberFormat('es-MX', {
+    return new Intl.NumberFormat('es-PE', {
       style: 'currency',
-      currency: 'MXN',
+      currency: 'PEN',
       minimumFractionDigits: 0,
       maximumFractionDigits: 0
     }).format(amount || 0)
+  }
+
+  const seedSampleAnalytics = async () => {
+    const today = new Date()
+    const data = []
+    
+    for (let i = 0; i < 30; i++) {
+      const date = new Date(today)
+      date.setDate(date.getDate() - i)
+      const dateStr = date.toISOString().split('T')[0]
+      
+      const visits = Math.floor(Math.random() * 50) + 10
+      const queries = Math.floor(Math.random() * 15) + 1
+      
+      data.push({
+        date: dateStr,
+        visits: visits,
+        whatsapp_queries: queries
+      })
+    }
+    
+    try {
+      const { error } = await supabase
+        .from('analytics')
+        .upsert(data, { onConflict: 'date' })
+      
+      if (error) console.error('Error seeding analytics:', error)
+    } catch (err) {
+      console.error('Error seeding analytics:', err)
+    }
   }
 
   const getStatusLabel = (status) => {
@@ -322,6 +377,7 @@ function DashboardView() {
                 <div>
                   <p className="text-slate-400 text-sm">Total Productos</p>
                   <p className="text-3xl font-bold">{stats.totalProducts}</p>
+                  <p className="text-xs text-slate-500 mt-1">{stats.publishedProducts} publicados</p>
                 </div>
                 <div className="p-3 bg-blue-600/20 rounded-lg">
                   <Package className="h-6 w-6 text-blue-400" />
@@ -341,8 +397,9 @@ function DashboardView() {
             ) : (
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-slate-400 text-sm">Ventas del mes</p>
+                  <p className="text-slate-400 text-sm">Ventas del Mes</p>
                   <p className="text-3xl font-bold">{formatCurrency(stats.salesThisMonth)}</p>
+                  <p className="text-xs text-slate-500 mt-1">{stats.totalOrders} pedidos</p>
                 </div>
                 <div className="p-3 bg-green-600/20 rounded-lg">
                   <DollarSign className="h-6 w-6 text-green-400" />
@@ -362,11 +419,12 @@ function DashboardView() {
             ) : (
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-slate-400 text-sm">Visitas</p>
-                  <p className="text-3xl font-bold">{stats.visitsThisMonth.toLocaleString()}</p>
+                  <p className="text-slate-400 text-sm">Pedidos Pendientes</p>
+                  <p className="text-3xl font-bold">{stats.pendingOrders}</p>
+                  <p className="text-xs text-slate-500 mt-1">por confirmar</p>
                 </div>
-                <div className="p-3 bg-purple-600/20 rounded-lg">
-                  <Eye className="h-6 w-6 text-purple-400" />
+                <div className="p-3 bg-yellow-600/20 rounded-lg">
+                  <ShoppingBag className="h-6 w-6 text-yellow-400" />
                 </div>
               </div>
             )}
@@ -385,6 +443,7 @@ function DashboardView() {
                 <div>
                   <p className="text-slate-400 text-sm">Consultas WhatsApp</p>
                   <p className="text-3xl font-bold">{stats.whatsappQueriesThisMonth}</p>
+                  <p className="text-xs text-slate-500 mt-1">este mes</p>
                 </div>
                 <div className="p-3 bg-green-600/20 rounded-lg">
                   <MessageCircle className="h-6 w-6 text-green-400" />
@@ -453,28 +512,28 @@ function DashboardView() {
           <CardContent className="space-y-3">
             <Button 
               className="w-full justify-start gap-2 bg-blue-600 hover:bg-blue-700"
-              onClick={() => navigate('/admin/products')}
+              onClick={() => setCurrentView('products')}
             >
               <Plus className="h-4 w-4" /> Nuevo Producto
             </Button>
             <Button 
               variant="outline" 
               className="w-full justify-start gap-2 border-slate-600 text-slate-300 hover:bg-slate-700"
-              onClick={() => navigate('/admin/orders')}
+              onClick={() => setCurrentView('orders')}
             >
               <ShoppingBag className="h-4 w-4" /> Ver Pedidos
             </Button>
             <Button 
               variant="outline" 
               className="w-full justify-start gap-2 border-slate-600 text-slate-300 hover:bg-slate-700"
-              onClick={() => navigate('/admin/analytics')}
+              onClick={() => setCurrentView('analytics')}
             >
               <BarChart3 className="h-4 w-4" /> Ver Analytics
             </Button>
             <Button 
               variant="outline" 
               className="w-full justify-start gap-2 border-slate-600 text-slate-300 hover:bg-slate-700"
-              onClick={() => navigate('/admin/settings')}
+              onClick={() => setCurrentView('settings')}
             >
               <Settings className="h-4 w-4" /> Configuración
             </Button>
@@ -486,7 +545,6 @@ function DashboardView() {
 }
 
 function ProductsView({ confirm, toast }) {
-  const navigate = useNavigate()
   const [showModal, setShowModal] = useState(false)
   const [editingProduct, setEditingProduct] = useState(null)
   const [products, setProducts] = useState([])
@@ -547,7 +605,7 @@ function ProductsView({ confirm, toast }) {
 
       setProducts(products.filter(p => p.id !== product.id))
       toast({ title: 'Producto eliminado correctamente', type: 'success' })
-    } catch (err) {
+    } catch {
       setProducts(products.filter(p => p.id !== product.id))
       toast({ title: 'Producto eliminado', type: 'success' })
     }
@@ -570,7 +628,7 @@ function ProductsView({ confirm, toast }) {
       ))
 
       toast({ title: 'Estado actualizado', type: 'success' })
-    } catch (err) {
+    } catch {
       toast({ title: 'Error al actualizar estado', type: 'danger' })
     }
   }
@@ -671,7 +729,7 @@ function ProductsView({ confirm, toast }) {
   }
 
   const formatPrice = (price) => {
-    return new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(price || 0)
+    return new Intl.NumberFormat('es-PE', { style: 'currency', currency: 'PEN' }).format(price || 0)
   }
 
   return (
@@ -848,7 +906,6 @@ function ProductModal({ onClose, onSave, editingProduct }) {
 
   const genders = ['men', 'women', 'unisex', 'kids']
   const categories = ['running', 'basketball', 'casual', 'lifestyle', 'limited_edition']
-  const conditions = ['new_with_box', 'new_without_box', 'preowned']
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -903,7 +960,7 @@ function ProductModal({ onClose, onSave, editingProduct }) {
             </div>
 
             <div>
-              <label className="text-sm text-slate-400">Precio (MXN) *</label>
+              <label className="text-sm text-slate-400">Precio (PEN) *</label>
               <Input
                 type="number"
                 value={formData.base_price}
@@ -1048,13 +1105,16 @@ function ProductModal({ onClose, onSave, editingProduct }) {
   )
 }
 
-function OrdersView() {
+function OrdersView({ toast }) {
   const [orders, setOrders] = useState([])
+  const [products, setProducts] = useState([])
   const [loading, setLoading] = useState(true)
+  const [showModal, setShowModal] = useState(false)
   const [stats, setStats] = useState({ total: 0, pending: 0, confirmed: 0, totalAmount: 0 })
 
   useEffect(() => {
     loadOrders()
+    loadProducts()
   }, [])
 
   const loadOrders = async () => {
@@ -1083,10 +1143,101 @@ function OrdersView() {
     }
   }
 
+  const loadProducts = async () => {
+    try {
+      const { data } = await supabase
+        .from('products')
+        .select('id, name, base_price, final_price, product_sizes(size)')
+        .eq('status', 'published')
+      
+      setProducts(data || [])
+    } catch (err) {
+      console.error('Error loading products:', err)
+      setProducts([])
+    }
+  }
+
+  const handleCreateOrder = async (orderData) => {
+    try {
+      const orderToInsert = {
+        customer_name: orderData.customer_name,
+        customer_phone: orderData.customer_phone,
+        product_name: orderData.product_name,
+        product_id: orderData.product_id || null,
+        size: orderData.size || null,
+        quantity: orderData.quantity || 1,
+        total_amount: orderData.total_amount || 0,
+        status: orderData.status || 'pending',
+        notes: orderData.notes || null
+      }
+
+      const { error } = await supabase
+        .from('orders')
+        .insert(orderToInsert)
+
+      if (error) throw error
+      
+      toast({ title: 'Pedido creado correctamente', type: 'success' })
+      loadOrders()
+      setShowModal(false)
+    } catch (err) {
+      console.error('Error creating order:', err)
+      toast({ title: 'Error al crear pedido', description: err.message || 'Unknown error', type: 'danger' })
+    }
+  }
+
+  const handleUpdateStatus = async (orderId, newStatus) => {
+    try {
+      const { error } = await supabase
+        .from('orders')
+        .update({ 
+          status: newStatus,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', orderId)
+
+      if (error) {
+        console.error('Supabase error:', error)
+        toast({ title: 'Error de permisos', description: error.message, type: 'danger' })
+        return
+      }
+      
+      toast({ title: 'Estado actualizado', description: `Pedido marcado como ${newStatus}`, type: 'success' })
+      loadOrders()
+    } catch (err) {
+      console.error('Error updating status:', err)
+      toast({ title: 'Error al actualizar estado', description: err.message, type: 'danger' })
+    }
+  }
+
+  const handleDeleteOrder = async (orderId) => {
+    if (!confirm('¿Estás seguro de eliminar este pedido?')) return
+    
+    try {
+      const { error } = await supabase
+        .from('orders')
+        .delete()
+        .eq('id', orderId)
+
+      if (error) {
+        console.error('Supabase error:', error)
+        toast({ title: 'Error de permisos', description: error.message, type: 'danger' })
+        return
+      }
+      
+      toast({ title: 'Pedido eliminado', type: 'success' })
+      setOrders(orders.filter(o => o.id !== orderId))
+      loadOrders()
+    } catch (err) {
+      console.error('Error deleting order:', err)
+      toast({ title: 'Error al eliminar', description: err.message, type: 'danger' })
+    }
+  }
+
   const formatCurrency = (amount) => {
-    return new Intl.NumberFormat('es-MX', {
+    return new Intl.NumberFormat('es-PE', {
       style: 'currency',
-      currency: 'MXN',
+      currency: 'PEN',
       minimumFractionDigits: 0
     }).format(amount || 0)
   }
@@ -1102,22 +1253,16 @@ function OrdersView() {
     return colors[status] || 'bg-slate-600/20 text-slate-400'
   }
 
-  const getStatusLabel = (status) => {
-    const labels = {
-      pending: 'Pendiente',
-      confirmed: 'Confirmado',
-      shipped: 'Enviado',
-      delivered: 'Entregado',
-      cancelled: 'Cancelado'
-    }
-    return labels[status] || status
-  }
-
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold">Pedidos</h1>
-        <p className="text-slate-400">Historial de ventas por WhatsApp</p>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold">Pedidos</h1>
+          <p className="text-slate-400">Gestiona los pedidos de tus clientes</p>
+        </div>
+        <Button className="gap-2 bg-blue-600 hover:bg-blue-700" onClick={() => setShowModal(true)}>
+          <Plus className="h-4 w-4" /> Nuevo Pedido
+        </Button>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -1160,23 +1305,27 @@ function OrdersView() {
             <div className="p-8 text-center">
               <MessageCircle className="h-12 w-12 text-slate-600 mx-auto mb-4" />
               <p className="text-slate-400">No hay pedidos aún</p>
-              <p className="text-sm text-slate-500 mt-2">Los pedidos realizados por WhatsApp aparecerán aquí</p>
+              <p className="text-sm text-slate-500 mt-2">Crea tu primer pedido manualmente o espera uno por WhatsApp</p>
             </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead className="border-b border-slate-700">
                   <tr className="text-left text-slate-400 text-sm">
+                    <th className="p-4">ID</th>
                     <th className="p-4">Cliente</th>
                     <th className="p-4">Producto</th>
+                    <th className="p-4">Talla</th>
                     <th className="p-4">Monto</th>
                     <th className="p-4">Estado</th>
                     <th className="p-4">Fecha</th>
+                    <th className="p-4">Acciones</th>
                   </tr>
                 </thead>
                 <tbody>
                   {orders.map((order) => (
                     <tr key={order.id} className="border-b border-slate-700/50 hover:bg-slate-700/30">
+                      <td className="p-4 text-slate-400 text-xs">#{order.id.slice(-6)}</td>
                       <td className="p-4">
                         <div>
                           <p className="font-medium">{order.customer_name}</p>
@@ -1184,17 +1333,35 @@ function OrdersView() {
                         </div>
                       </td>
                       <td className="p-4">
-                        <p className="truncate max-w-[200px]">{order.product_name}</p>
-                        {order.size && <p className="text-xs text-slate-400">Talla: {order.size}</p>}
+                        <p className="truncate max-w-[150px]">{order.product_name}</p>
                       </td>
+                      <td className="p-4 text-sm">{order.size || '-'}</td>
                       <td className="p-4 font-medium">{formatCurrency(order.total_amount)}</td>
                       <td className="p-4">
-                        <span className={`text-xs px-2 py-1 rounded ${getStatusColor(order.status)}`}>
-                          {getStatusLabel(order.status)}
-                        </span>
+                        <select
+                          value={order.status}
+                          onChange={(e) => handleUpdateStatus(order.id, e.target.value)}
+                          className={`text-xs px-2 py-1 rounded border cursor-pointer ${getStatusColor(order.status)}`}
+                        >
+                          <option value="pending" className="bg-slate-800">Pendiente</option>
+                          <option value="confirmed" className="bg-slate-800">Confirmado</option>
+                          <option value="shipped" className="bg-slate-800">Enviado</option>
+                          <option value="delivered" className="bg-slate-800">Entregado</option>
+                          <option value="cancelled" className="bg-slate-800">Cancelado</option>
+                        </select>
                       </td>
                       <td className="p-4 text-slate-400 text-sm">
-                        {new Date(order.created_at).toLocaleDateString('es-MX')}
+                        {new Date(order.created_at).toLocaleDateString('es-PE')}
+                      </td>
+                      <td className="p-4">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="text-red-400 hover:text-red-300"
+                          onClick={() => handleDeleteOrder(order.id)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
                       </td>
                     </tr>
                   ))}
@@ -1204,6 +1371,185 @@ function OrdersView() {
           )}
         </CardContent>
       </Card>
+
+      {showModal && (
+        <OrderModal
+          products={products}
+          toast={toast}
+          onClose={() => setShowModal(false)}
+          onSave={handleCreateOrder}
+        />
+      )}
+    </div>
+  )
+}
+
+function OrderModal({ products, toast, onClose, onSave }) {
+  const [loading, setLoading] = useState(false)
+  const [formData, setFormData] = useState({
+    customer_name: '',
+    customer_phone: '',
+    product_id: '',
+    product_name: '',
+    size: '',
+    quantity: 1,
+    total_amount: 0,
+    status: 'pending',
+    notes: ''
+  })
+
+  const selectedProduct = products.find(p => p.id === formData.product_id)
+
+  useEffect(() => {
+    if (selectedProduct) {
+      const price = selectedProduct.final_price || selectedProduct.base_price
+      setTimeout(() => {
+        setFormData(prev => ({
+          ...prev,
+          product_name: selectedProduct.name,
+          total_amount: price * prev.quantity
+        }))
+      }, 0)
+    }
+  }, [formData.product_id, selectedProduct])
+
+  useEffect(() => {
+    if (selectedProduct) {
+      const price = selectedProduct.final_price || selectedProduct.base_price
+      setTimeout(() => {
+        setFormData(prev => ({
+          ...prev,
+          total_amount: price * prev.quantity
+        }))
+      }, 0)
+    }
+  }, [formData.quantity, selectedProduct])
+
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    
+    if (!formData.customer_name || !formData.customer_phone || !formData.product_id) {
+      toast({ title: 'Completa los campos', description: 'Por favor llena todos los campos obligatorios', type: 'warning' })
+      return
+    }
+
+    setLoading(true)
+    await onSave(formData)
+    setLoading(false)
+  }
+
+  const sizes = selectedProduct?.product_sizes?.map(s => s.size) || []
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
+      <div className="bg-slate-800 rounded-xl w-full max-w-lg">
+        <div className="flex items-center justify-between p-4 border-b border-slate-700">
+          <h2 className="text-xl font-bold">Nuevo Pedido</h2>
+          <Button variant="ghost" size="icon" onClick={onClose} className="text-slate-400 hover:text-white">
+            <X className="h-5 w-5" />
+          </Button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="p-4 space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="md:col-span-2">
+              <label className="text-sm text-slate-400">Cliente *</label>
+              <Input
+                value={formData.customer_name}
+                onChange={(e) => setFormData({ ...formData, customer_name: e.target.value })}
+                placeholder="Nombre del cliente"
+                className="mt-1 bg-slate-700 border-slate-600 text-white"
+                required
+              />
+            </div>
+
+            <div className="md:col-span-2">
+              <label className="text-sm text-slate-400">Teléfono *</label>
+              <Input
+                value={formData.customer_phone}
+                onChange={(e) => setFormData({ ...formData, customer_phone: e.target.value })}
+                placeholder="51987654321"
+                className="mt-1 bg-slate-700 border-slate-600 text-white"
+                required
+              />
+            </div>
+
+            <div className="md:col-span-2">
+              <label className="text-sm text-slate-400">Producto *</label>
+              <select
+                value={formData.product_id}
+                onChange={(e) => setFormData({ ...formData, product_id: e.target.value })}
+                className="mt-1 w-full p-3 bg-slate-700 border-slate-600 rounded-lg text-white"
+                required
+              >
+                <option value="">Seleccionar producto</option>
+                {products.map(product => (
+                  <option key={product.id} value={product.id}>
+                    {product.name} - S/{(product.final_price || product.base_price).toLocaleString()}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {sizes.length > 0 && (
+              <div className="md:col-span-2">
+                <label className="text-sm text-slate-400">Talla</label>
+                <select
+                  value={formData.size}
+                  onChange={(e) => setFormData({ ...formData, size: e.target.value })}
+                  className="mt-1 w-full p-3 bg-slate-700 border-slate-600 rounded-lg text-white"
+                >
+                  <option value="">Seleccionar talla</option>
+                  {sizes.map(size => (
+                    <option key={size} value={size}>{size}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            <div>
+              <label className="text-sm text-slate-400">Cantidad</label>
+              <Input
+                type="number"
+                min="1"
+                value={formData.quantity}
+                onChange={(e) => setFormData({ ...formData, quantity: parseInt(e.target.value) || 1 })}
+                className="mt-1 bg-slate-700 border-slate-600 text-white"
+              />
+            </div>
+
+            <div>
+              <label className="text-sm text-slate-400">Total (PEN)</label>
+              <Input
+                type="number"
+                value={formData.total_amount}
+                onChange={(e) => setFormData({ ...formData, total_amount: parseFloat(e.target.value) || 0 })}
+                className="mt-1 bg-slate-700 border-slate-600 text-white"
+              />
+            </div>
+
+            <div className="md:col-span-2">
+              <label className="text-sm text-slate-400">Notas</label>
+              <textarea
+                value={formData.notes}
+                onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                placeholder="Notas adicionales..."
+                rows={2}
+                className="mt-1 w-full p-3 bg-slate-700 border-slate-600 rounded-lg text-white resize-none"
+              />
+            </div>
+          </div>
+
+          <div className="flex gap-3 pt-4 border-t border-slate-700">
+            <Button type="button" variant="outline" onClick={onClose} className="flex-1 border-slate-600 text-slate-300 hover:bg-slate-700">
+              Cancelar
+            </Button>
+            <Button type="submit" className="flex-1 bg-blue-600 hover:bg-blue-700" disabled={loading}>
+              {loading ? 'Guardando...' : 'Crear Pedido'}
+            </Button>
+          </div>
+        </form>
+      </div>
     </div>
   )
 }
@@ -1323,7 +1669,7 @@ function AnalyticsView() {
                   {analytics.map((day) => (
                     <tr key={day.id} className="border-b border-slate-700/50 hover:bg-slate-700/30">
                       <td className="p-4">
-                        {new Date(day.date).toLocaleDateString('es-MX', { weekday: 'short', month: 'short', day: 'numeric' })}
+                        {new Date(day.date).toLocaleDateString('es-PE', { weekday: 'short', month: 'short', day: 'numeric' })}
                       </td>
                       <td className="p-4 font-medium">{day.visits || 0}</td>
                       <td className="p-4 text-green-400">{day.whatsapp_queries || 0}</td>
@@ -1346,7 +1692,6 @@ function AnalyticsView() {
 }
 
 function SettingsView({ user, toast, confirm }) {
-  const navigate = useNavigate()
   const [admins, setAdmins] = useState([])
   const [newAdminEmail, setNewAdminEmail] = useState('')
   const [newAdminName, setNewAdminName] = useState('')
@@ -1529,7 +1874,7 @@ function SettingsView({ user, toast, confirm }) {
               placeholder="521234567890"
               className="mt-1 bg-slate-700 border-slate-600 text-white" 
             />
-            <p className="text-xs text-slate-500 mt-1">Incluye código de país (52 para México)</p>
+            <p className="text-xs text-slate-500 mt-1">Incluye código de país (51 para Perú)</p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
@@ -1551,6 +1896,16 @@ function SettingsView({ user, toast, confirm }) {
               />
             </div>
           </div>
+          <div>
+            <label className="text-sm text-slate-400">Sobre nosotros (Footer)</label>
+            <textarea
+              value={settings.about_text}
+              onChange={(e) => setSettings({ ...settings, about_text: e.target.value })}
+              placeholder="Somos tu tienda de confianza para zapatillas auténticas..."
+              rows={3}
+              className="mt-1 w-full p-3 bg-slate-700 border-slate-600 rounded-lg text-white resize-none"
+            />
+          </div>
           <Button 
             className="bg-blue-600 hover:bg-blue-700" 
             onClick={handleSaveSettings}
@@ -1571,7 +1926,7 @@ function SettingsView({ user, toast, confirm }) {
             <textarea
               value={settings.shipping_info}
               onChange={(e) => setSettings({ ...settings, shipping_info: e.target.value })}
-              placeholder="Ej: Envíos a todo México. CDMX: 1-2 días. Interior: 3-5 días hábiles."
+              placeholder="Ej: Envíos a todo el Perú. Lima: 1-2 días. Provincias: 3-5 días hábiles."
               rows={3}
               className="mt-1 w-full p-3 bg-slate-700 border-slate-600 rounded-lg text-white resize-none"
             />
@@ -1581,18 +1936,8 @@ function SettingsView({ user, toast, confirm }) {
             <textarea
               value={settings.return_policy}
               onChange={(e) => setSettings({ ...settings, return_policy: e.target.value })}
-              placeholder="Ej: 30 días para devoluciones. El producto debe estar sin usar."
+              placeholder="Ej: 30 días para devoluciones. El producto debe estar sin usar y con caja."
               rows={3}
-              className="mt-1 w-full p-3 bg-slate-700 border-slate-600 rounded-lg text-white resize-none"
-            />
-          </div>
-          <div>
-            <label className="text-sm text-slate-400">Sobre nosotros</label>
-            <textarea
-              value={settings.about_text}
-              onChange={(e) => setSettings({ ...settings, about_text: e.target.value })}
-              placeholder="Somos tu tienda de confianza para zapatillas auténticas..."
-              rows={4}
               className="mt-1 w-full p-3 bg-slate-700 border-slate-600 rounded-lg text-white resize-none"
             />
           </div>

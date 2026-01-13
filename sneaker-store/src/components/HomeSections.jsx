@@ -2,8 +2,13 @@ import { Link } from 'react-router-dom'
 import { ArrowRight, MessageCircle, Star, Zap, Shield, Truck } from 'lucide-react'
 import { Button } from './ui/Button'
 import { ProductCard } from './ProductCard'
+import { handleWhatsAppClick } from '../lib/whatsapp'
 
 export function Hero() {
+  const handleContact = async () => {
+    await handleWhatsAppClick({ type: 'general' })
+  }
+
   return (
     <section className="relative bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-white overflow-hidden">
       <div className="absolute inset-0">
@@ -27,7 +32,7 @@ export function Hero() {
           
           <p className="text-lg md:text-xl text-slate-400 mb-8 max-w-lg">
             Zapatillas auténticas de las mejores marcas. Nike, Adidas, Jordan y más. 
-            Envío a todo México.
+            Envío a todo el país.
           </p>
           
           <div className="flex flex-wrap gap-4">
@@ -36,15 +41,14 @@ export function Hero() {
                 Ver catálogo <ArrowRight className="h-5 w-5" />
               </Button>
             </Link>
-            <a
-              href="https://wa.me/"
-              target="_blank"
-              rel="noopener noreferrer"
+            <button
+              onClick={handleContact}
+              className="inline-flex items-center"
             >
               <Button size="lg" variant="outline" className="gap-2 border-white/20 text-white hover:bg-white/10">
                 <MessageCircle className="h-5 w-5 text-green-400" /> Contactar
               </Button>
-            </a>
+            </button>
           </div>
 
           <div className="flex flex-wrap gap-6 mt-10 pt-10 border-t border-white/10">
@@ -54,7 +58,7 @@ export function Hero() {
             </div>
             <div className="flex items-center gap-2 text-sm text-slate-400">
               <Truck className="h-5 w-5 text-blue-400" />
-              <span>Envío gratis +$999</span>
+              <span>Envío a todo el país</span>
             </div>
             <div className="flex items-center gap-2 text-sm text-slate-400">
               <Star className="h-5 w-5 text-yellow-400" />
@@ -67,7 +71,32 @@ export function Hero() {
   )
 }
 
-export function FeaturedSection({ title, products, link }) {
+export function FeaturedSection({ title, products, link, loading }) {
+  if (loading) {
+    return (
+      <section className="py-16 md:py-20">
+        <div className="container mx-auto px-4">
+          <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4 mb-10">
+            <div>
+              <h2 className="text-2xl md:text-3xl font-bold">{title}</h2>
+              <p className="text-slate-500 mt-1">Las mejores opciones para ti</p>
+            </div>
+          </div>
+          
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            {[1, 2, 3, 4].map(i => (
+              <div key={i} className="animate-pulse">
+                <div className="aspect-square bg-slate-200 rounded-2xl mb-4"></div>
+                <div className="h-4 bg-slate-200 rounded w-24 mb-2"></div>
+                <div className="h-6 bg-slate-200 rounded w-32"></div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+    )
+  }
+
   return (
     <section className="py-16 md:py-20">
       <div className="container mx-auto px-4">
@@ -105,13 +134,47 @@ export function FeaturedSection({ title, products, link }) {
   )
 }
 
-export function BrandsSection({ brands }) {
+export function BrandsSection({ brands, loading }) {
+  if (loading) {
+    return (
+      <section className="py-16 bg-slate-50">
+        <div className="container mx-auto px-4">
+          <div className="text-center mb-10">
+            <h2 className="text-2xl md:text-3xl font-bold mb-2">Nuestras marcas</h2>
+            <p className="text-slate-500">Las marcas más populares del momento</p>
+          </div>
+          
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+            {[1, 2, 3, 4, 5, 6].map(i => (
+              <div key={i} className="animate-pulse p-6 bg-white rounded-xl">
+                <div className="w-16 h-16 rounded-full bg-slate-200 mx-auto mb-3"></div>
+                <div className="h-4 bg-slate-200 rounded w-16 mx-auto"></div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+    )
+  }
+
   return (
     <section className="py-16 bg-slate-50">
       <div className="container mx-auto px-4">
-        <div className="text-center mb-10">
-          <h2 className="text-2xl md:text-3xl font-bold mb-2">Nuestras marcas</h2>
-          <p className="text-slate-500">Las marcas más populares del momento</p>
+        <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4 mb-10">
+          <Link to="/catalogo" className="group">
+            <h2 className="text-2xl md:text-3xl font-bold group-hover:text-blue-600 transition-colors">
+              Nuestras marcas
+            </h2>
+            <p className="text-slate-500 mt-1 group-hover:text-slate-600 transition-colors">
+              Las marcas más populares del momento
+            </p>
+          </Link>
+          <Link 
+            to="/catalogo" 
+            className="inline-flex items-center gap-2 text-primary hover:underline font-medium"
+          >
+            Ver todas las marcas <ArrowRight className="h-4 w-4" />
+          </Link>
         </div>
         
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
@@ -138,6 +201,10 @@ export function BrandsSection({ brands }) {
 }
 
 export function CTASection() {
+  const handleWhatsApp = async () => {
+    await handleWhatsAppClick({ type: 'general' })
+  }
+
   return (
     <section className="py-20 bg-slate-900 text-white relative overflow-hidden">
       <div className="absolute inset-0 bg-gradient-to-r from-blue-600/20 to-purple-600/20"></div>
@@ -158,15 +225,13 @@ export function CTASection() {
           </p>
           
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <a
-              href="https://wa.me/"
-              target="_blank"
-              rel="noopener noreferrer"
+            <button
+              onClick={handleWhatsApp}
               className="inline-flex items-center justify-center gap-2 px-8 py-4 bg-green-500 text-white font-medium rounded-lg hover:bg-green-600 transition-colors"
             >
               <MessageCircle className="h-5 w-5" />
               Chatear por WhatsApp
-            </a>
+            </button>
             <Link
               to="/catalogo"
               className="inline-flex items-center justify-center gap-2 px-8 py-4 bg-white/10 text-white font-medium rounded-lg hover:bg-white/20 transition-colors"
@@ -178,7 +243,7 @@ export function CTASection() {
           <div className="flex flex-wrap justify-center gap-8 mt-10 pt-10 border-t border-white/10">
             <div className="flex items-center gap-2 text-sm text-slate-400">
               <span className="text-2xl">📦</span>
-              <span>Envío a todo México</span>
+              <span>Envío a todo el país</span>
             </div>
             <div className="flex items-center gap-2 text-sm text-slate-400">
               <span className="text-2xl">✅</span>

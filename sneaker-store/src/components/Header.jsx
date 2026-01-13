@@ -1,18 +1,21 @@
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { ShoppingBag, Heart, Instagram, MessageCircle, User, Settings, Menu, X, LogOut } from 'lucide-react'
 import { Button } from './ui/Button'
 import { useCartStore } from '../store/favoritesStore'
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
-import { handleWhatsAppClick } from '../lib/whatsapp'
+import { handleWhatsAppClick, clearWhatsAppCache } from '../lib/whatsapp'
 
 export function Header() {
   const { favorites } = useCartStore()
   const [user, setUser] = useState(null)
   const [isAdmin, setIsAdmin] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const [searchParams] = useSearchParams()
 
   useEffect(() => {
+    clearWhatsAppCache()
+    
     const checkUser = async () => {
       const { data: { user } } = await supabase.auth.getUser()
       setUser(user)
@@ -25,7 +28,7 @@ export function Header() {
             .eq('id', user.id)
             .single()
           setIsAdmin(!!admin)
-        } catch (e) {
+        } catch {
           setIsAdmin(false)
         }
       }
@@ -63,6 +66,7 @@ export function Header() {
     { to: '/catalogo?gender=men', label: 'Hombre' },
     { to: '/catalogo?gender=women', label: 'Mujer' },
     { to: '/catalogo?category=limited_edition', label: 'Limited' },
+    { to: '/mis-pedidos', label: 'Mis Pedidos' },
   ]
 
   return (
@@ -79,15 +83,26 @@ export function Header() {
           </Link>
 
           <nav className="hidden md:flex items-center gap-1">
-            {navLinks.map((link) => (
-              <Link
-                key={link.to}
-                to={link.to}
-                className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-all"
-              >
-                {link.label}
-              </Link>
-            ))}
+            {navLinks.map((link) => {
+              const isActive = searchParams.get('gender') === 'men' && link.to === '/catalogo?gender=men' ||
+                searchParams.get('gender') === 'women' && link.to === '/catalogo?gender=women' ||
+                searchParams.get('category') === 'limited_edition' && link.to === '/catalogo?category=limited_edition' ||
+                link.to === '/catalogo' && !searchParams.get('gender') && !searchParams.get('category')
+              
+              return (
+                <Link
+                  key={link.to}
+                  to={link.to}
+                  className={`px-4 py-2 text-sm font-medium rounded-lg transition-all ${
+                    isActive 
+                      ? 'bg-blue-100 text-blue-700' 
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                  }`}
+                >
+                  {link.label}
+                </Link>
+              )
+            })}
           </nav>
 
           <div className="flex items-center gap-1">
@@ -179,16 +194,27 @@ export function Header() {
       {mobileMenuOpen && (
         <div className="md:hidden border-t bg-white">
           <div className="container mx-auto px-4 py-4 space-y-2">
-            {navLinks.map((link) => (
-              <Link
-                key={link.to}
-                to={link.to}
-                onClick={() => setMobileMenuOpen(false)}
-                className="block px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-lg"
-              >
-                {link.label}
-              </Link>
-            ))}
+            {navLinks.map((link) => {
+              const isActive = searchParams.get('gender') === 'men' && link.to === '/catalogo?gender=men' ||
+                searchParams.get('gender') === 'women' && link.to === '/catalogo?gender=women' ||
+                searchParams.get('category') === 'limited_edition' && link.to === '/catalogo?category=limited_edition' ||
+                link.to === '/catalogo' && !searchParams.get('gender') && !searchParams.get('category')
+              
+              return (
+                <Link
+                  key={link.to}
+                  to={link.to}
+                  onClick={() => setMobileMenuOpen(false)}
+                  className={`block px-4 py-2 text-sm font-medium rounded-lg ${
+                    isActive 
+                      ? 'bg-blue-100 text-blue-700' 
+                      : 'text-slate-600 hover:bg-slate-100'
+                  }`}
+                >
+                  {link.label}
+                </Link>
+              )
+            })}
             <hr className="my-2" />
             {!user ? (
               <>
