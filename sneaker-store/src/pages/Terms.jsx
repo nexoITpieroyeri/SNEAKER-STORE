@@ -67,7 +67,7 @@ export function TermsPage() {
                   previo aviso.</p>
                   <p><strong>3.3 Disponibilidad:</strong> Los productos están sujetos a 
                   disponibilidad. En caso de agotarse stock después de confirmar el pedido, 
-                  le通知aremos inmediatamente.</p>
+                  leeremos inmediatamente.</p>
                 </div>
               </section>
 
@@ -99,9 +99,8 @@ export function TermsPage() {
                   nuestros productos son originales y provienen de fuentes autorizadas.</p>
                   <p><strong>5.2 Garantía:</strong> Todos los productos tienen garantía por 
                   defectos de fabricación. No cubrimos daños por mal uso.</p>
-                  <p><strong>5.3 Devoluciones:</strong> El cliente tiene 30 días para solicitar 
-                  devolución si el producto presenta defectos. El producto debe estar sin usar 
-                  y con su empaque original.</p>
+                  <p><strong>5.3 Devoluciones:</strong> Una ves realizada la compra, el cliente no puede
+                  hacer la devolucion del producto</p>
                 </div>
               </section>
 
