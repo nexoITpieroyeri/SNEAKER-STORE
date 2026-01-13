@@ -5,8 +5,6 @@ import { HomePage } from './pages/Home'
 import { CatalogPage } from './pages/Catalog'
 import { ProductDetailPage } from './pages/ProductDetail'
 import { FavoritesPage } from './pages/Favorites'
-import { AdminLogin } from './pages/AdminLogin'
-import { AdminRegister } from './pages/AdminRegister'
 import { AdminDashboard } from './pages/AdminDashboard'
 import { LoginPage } from './pages/Login'
 import { RegisterPage } from './pages/Register'
@@ -15,8 +13,6 @@ function App() {
   return (
     <Router>
       <Routes>
-        <Route path="/admin/login" element={<AdminLogin />} />
-        <Route path="/admin/register" element={<AdminRegister />} />
         <Route path="/admin/dashboard" element={<AdminDashboard />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />

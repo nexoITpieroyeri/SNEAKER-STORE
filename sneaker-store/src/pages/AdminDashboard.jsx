@@ -2,11 +2,12 @@ import { useState, useEffect } from 'react'
 import { useNavigate, Link, useLocation } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { Button } from '../components/ui/Button'
+import { Input } from '../components/ui/Input'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card'
 import { 
   Package, ShoppingBag, Users, BarChart3, Settings, Plus, 
   Edit, Trash2, LogOut, Home, Menu, X, TrendingUp, DollarSign,
-  Eye, MessageCircle, Archive
+  Eye, MessageCircle, Archive, UserPlus, Check, X as XIcon
 } from 'lucide-react'
 
 const navItems = [
@@ -34,7 +35,7 @@ export function AdminDashboard() {
     try {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) {
-        navigate('/admin/login')
+        navigate('/login')
         return
       }
       setUser(user)
@@ -47,14 +48,14 @@ export function AdminDashboard() {
 
       if (!admin) {
         await supabase.auth.signOut()
-        navigate('/admin/login')
+        navigate('/login')
         return
       }
 
       setIsAdmin(true)
       setLoading(false)
     } catch (e) {
-      navigate('/admin/login')
+      navigate('/login')
     }
   }
 
@@ -390,6 +391,86 @@ function AnalyticsView() {
 }
 
 function SettingsView({ user }) {
+  const [admins, setAdmins] = useState([])
+  const [newAdminEmail, setNewAdminEmail] = useState('')
+  const [newAdminName, setNewAdminName] = useState('')
+  const [newAdminRole, setNewAdminRole] = useState('admin')
+  const [loading, setLoading] = useState(false)
+  const [message, setMessage] = useState(null)
+
+  useEffect(() => {
+    loadAdmins()
+  }, [])
+
+  const loadAdmins = async () => {
+    const { data } = await supabase
+      .from('admin_users')
+      .select('*')
+      .order('created_at', { ascending: false })
+    setAdmins(data || [])
+  }
+
+  const handleAddAdmin = async (e) => {
+    e.preventDefault()
+    setLoading(true)
+    setMessage(null)
+
+    try {
+      const { data: authUser, error: authError } = await supabase
+        .from('admin_users')
+        .select('id, email')
+        .eq('email', newAdminEmail)
+        .single()
+
+      if (authError || !authUser) {
+        setMessage({ type: 'error', text: 'El usuario debe registrarse primero en la tienda' })
+        setLoading(false)
+        return
+      }
+
+      const { error } = await supabase
+        .from('admin_users')
+        .insert({
+          id: authUser.id,
+          email: newAdminEmail,
+          full_name: newAdminName,
+          role: newAdminRole
+        })
+
+      if (error) throw error
+
+      setMessage({ type: 'success', text: 'Admin agregado correctamente' })
+      setNewAdminEmail('')
+      setNewAdminName('')
+      loadAdmins()
+    } catch (err) {
+      setMessage({ type: 'error', text: err.message })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleRemoveAdmin = async (adminId) => {
+    if (adminId === user?.id) {
+      setMessage({ type: 'error', text: 'No puedes eliminarte a ti mismo' })
+      return
+    }
+
+    if (!confirm('¿Estás seguro de eliminar este admin?')) return
+
+    const { error } = await supabase
+      .from('admin_users')
+      .delete()
+      .eq('id', adminId)
+
+    if (error) {
+      setMessage({ type: 'error', text: error.message })
+    } else {
+      setMessage({ type: 'success', text: 'Admin eliminado' })
+      loadAdmins()
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div>
@@ -404,13 +485,120 @@ function SettingsView({ user }) {
         <CardContent className="space-y-4">
           <div>
             <label className="text-sm text-slate-400">Email de contacto</label>
-            <input type="email" defaultValue={user?.email} className="w-full mt-1 p-3 bg-slate-700 border border-slate-600 rounded-lg text-white" />
+            <Input 
+              defaultValue={user?.email} 
+              className="mt-1 bg-slate-700 border-slate-600 text-white"
+              disabled
+            />
           </div>
           <div>
             <label className="text-sm text-slate-400">WhatsApp</label>
-            <input type="text" defaultValue="521234567890" className="w-full mt-1 p-3 bg-slate-700 border border-slate-600 rounded-lg text-white" />
+            <Input 
+              defaultValue="521234567890" 
+              className="mt-1 bg-slate-700 border-slate-600 text-white" 
+            />
           </div>
           <Button className="bg-blue-600 hover:bg-blue-700">Guardar cambios</Button>
+        </CardContent>
+      </Card>
+
+      <Card className="bg-slate-800 border-slate-700">
+        <CardHeader>
+          <CardTitle className="text-white flex items-center gap-2">
+            <UserPlus className="h-5 w-5" />
+            Gestionar Administradores
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {message && (
+            <div className={`p-3 rounded-lg text-sm ${
+              message.type === 'success' 
+                ? 'bg-green-500/20 text-green-400' 
+                : 'bg-red-500/20 text-red-400'
+            }`}>
+              {message.text}
+            </div>
+          )}
+
+          <form onSubmit={handleAddAdmin} className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <label className="text-sm text-slate-400">Email del usuario</label>
+              <Input
+                type="email"
+                value={newAdminEmail}
+                onChange={(e) => setNewAdminEmail(e.target.value)}
+                placeholder="usuario@email.com"
+                className="mt-1 bg-slate-700 border-slate-600 text-white"
+                required
+              />
+            </div>
+            <div>
+              <label className="text-sm text-slate-400">Nombre</label>
+              <Input
+                type="text"
+                value={newAdminName}
+                onChange={(e) => setNewAdminName(e.target.value)}
+                placeholder="Nombre del admin"
+                className="mt-1 bg-slate-700 border-slate-600 text-white"
+                required
+              />
+            </div>
+            <div>
+              <label className="text-sm text-slate-400">Rol</label>
+              <select
+                value={newAdminRole}
+                onChange={(e) => setNewAdminRole(e.target.value)}
+                className="mt-1 w-full p-3 bg-slate-700 border-slate-600 rounded-lg text-white"
+              >
+                <option value="admin">Admin</option>
+                <option value="super_admin">Super Admin</option>
+                <option value="editor">Editor</option>
+              </select>
+            </div>
+            <div className="md:col-span-3">
+              <Button type="submit" className="w-full bg-blue-600 hover:bg-blue-700" disabled={loading}>
+                {loading ? 'Agregando...' : 'Agregar Administrador'}
+              </Button>
+            </div>
+          </form>
+
+          <div className="mt-6">
+            <h4 className="text-sm font-medium text-slate-400 mb-3">Administradores actuales</h4>
+            <div className="space-y-2">
+              {admins.map((admin) => (
+                <div key={admin.id} className="flex items-center justify-between p-3 bg-slate-700/50 rounded-lg">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center">
+                      <span className="text-sm font-medium">{admin.email?.[0]?.toUpperCase()}</span>
+                    </div>
+                    <div>
+                      <p className="font-medium">{admin.full_name || 'Sin nombre'}</p>
+                      <p className="text-xs text-slate-400">{admin.email}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className={`text-xs px-2 py-1 rounded ${
+                      admin.role === 'super_admin' 
+                        ? 'bg-purple-600/20 text-purple-400' 
+                        : 'bg-blue-600/20 text-blue-400'
+                    }`}>
+                      {admin.role === 'super_admin' ? 'Super Admin' : admin.role === 'admin' ? 'Admin' : 'Editor'}
+                    </span>
+                    {admin.id !== user?.id && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="text-red-400 hover:text-red-300"
+                        onClick={() => handleRemoveAdmin(admin.id)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
         </CardContent>
       </Card>
     </div>

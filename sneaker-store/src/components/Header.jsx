@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { ShoppingBag, Heart, Instagram, MessageCircle, Lock, User, Settings, Menu, X } from 'lucide-react'
+import { ShoppingBag, Heart, Instagram, MessageCircle, User, Settings, Menu, X, LogOut } from 'lucide-react'
 import { Button } from './ui/Button'
 import { useCartStore } from '../store/favoritesStore'
 import { useEffect, useState } from 'react'
@@ -89,8 +89,16 @@ export function Header() {
                 <span className="hidden lg:block text-sm text-slate-500">
                   {user.email}
                 </span>
+                {isAdmin && (
+                  <Link to="/admin/dashboard">
+                    <Button variant="ghost" size="icon" className="text-slate-600" title="Panel Admin">
+                      <Settings className="h-5 w-5" />
+                    </Button>
+                  </Link>
+                )}
                 <Button variant="ghost" size="sm" onClick={handleLogout} className="text-slate-600">
-                  Salir
+                  <LogOut className="h-4 w-4 mr-1 md:mr-0" />
+                  <span className="md:hidden ml-1">Salir</span>
                 </Button>
               </div>
             ) : (
@@ -142,16 +150,10 @@ export function Header() {
               </Button>
             </a>
 
-            {isAdmin ? (
-              <Link to="/admin/dashboard">
-                <Button variant="ghost" size="icon" className="text-slate-600" title="Panel Admin">
-                  <Settings className="h-5 w-5" />
-                </Button>
-              </Link>
-            ) : (
-              <Link to="/admin/login">
-                <Button variant="ghost" size="icon" className="text-slate-400" title="Admin">
-                  <Lock className="h-4 w-4" />
+            {!user && (
+              <Link to="/login">
+                <Button variant="ghost" size="icon" className="md:hidden text-slate-600" title="Login">
+                  <User className="h-5 w-5" />
                 </Button>
               </Link>
             )}
@@ -183,7 +185,7 @@ export function Header() {
               </Link>
             ))}
             <hr className="my-2" />
-            {!user && (
+            {!user ? (
               <>
                 <Link
                   to="/login"
@@ -199,6 +201,27 @@ export function Header() {
                 >
                   Registro
                 </Link>
+              </>
+            ) : (
+              <>
+                {isAdmin && (
+                  <Link
+                    to="/admin/dashboard"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className="block px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-lg"
+                  >
+                    Panel Admin
+                  </Link>
+                )}
+                <button
+                  onClick={() => {
+                    handleLogout()
+                    setMobileMenuOpen(false)
+                  }}
+                  className="block w-full text-left px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 rounded-lg"
+                >
+                  Cerrar sesión
+                </button>
               </>
             )}
           </div>

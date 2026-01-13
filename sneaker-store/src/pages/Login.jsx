@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { Button } from '../components/ui/Button'
@@ -12,19 +12,44 @@ export function LoginPage() {
   const [error, setError] = useState(null)
   const navigate = useNavigate()
 
+  useEffect(() => {
+    const checkSession = async () => {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user) {
+        redirectByRole(user)
+      }
+    }
+    checkSession()
+  }, [])
+
+  const redirectByRole = async (user) => {
+    const { data: admin } = await supabase
+      .from('admin_users')
+      .select('id')
+      .eq('id', user.id)
+      .single()
+
+    if (admin) {
+      navigate('/admin/dashboard', { replace: true })
+    } else {
+      navigate('/', { replace: true })
+    }
+  }
+
   const handleLogin = async (e) => {
     e.preventDefault()
     setLoading(true)
     setError(null)
 
     try {
-      const { error } = await supabase.auth.signInWithPassword({
+      const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password
       })
 
       if (error) throw error
-      navigate('/')
+
+      redirectByRole(data.user)
     } catch (err) {
       setError(err.message)
     } finally {
@@ -33,15 +58,19 @@ export function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-muted p-4">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-100 to-slate-200 p-4">
       <Card className="w-full max-w-md">
-        <CardHeader>
-          <CardTitle className="text-center">Iniciar Sesión</CardTitle>
+        <CardHeader className="text-center">
+          <div className="w-14 h-14 bg-gradient-to-br from-blue-500 to-purple-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
+            <span className="text-white font-bold text-2xl">S</span>
+          </div>
+          <CardTitle className="text-2xl">Iniciar Sesión</CardTitle>
+          <p className="text-sm text-muted-foreground">Accede a tu cuenta</p>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleLogin} className="space-y-4">
             {error && (
-              <div className="p-3 text-sm text-red-500 bg-red-50 rounded">
+              <div className="p-3 text-sm text-red-500 bg-red-50 rounded-lg">
                 {error}
               </div>
             )}
@@ -69,10 +98,10 @@ export function LoginPage() {
               {loading ? 'Iniciando...' : 'Iniciar sesión'}
             </Button>
           </form>
-          <div className="mt-4 text-center text-sm space-y-2">
+          <div className="mt-6 text-center text-sm space-y-2">
             <p className="text-muted-foreground">
               ¿No tienes cuenta?{' '}
-              <Link to="/register" className="text-primary hover:underline">
+              <Link to="/register" className="text-primary font-medium hover:underline">
                 Regístrate
               </Link>
             </p>

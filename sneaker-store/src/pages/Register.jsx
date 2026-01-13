@@ -20,21 +20,34 @@ export function RegisterPage() {
     setError(null)
 
     try {
-      const { error: signUpError } = await supabase.auth.signUp({
+      const { data, error: signUpError } = await supabase.auth.signUp({
         email,
         password,
         options: {
           data: {
             full_name: fullName
-          }
+          },
+          emailRedirectTo: window.location.origin + '/login'
         }
       })
 
       if (signUpError) throw signUpError
-      setSuccess(true)
-      setTimeout(() => {
-        navigate('/login')
-      }, 3000)
+
+      if (data.user && data.user.identities?.length === 0) {
+        throw new Error('Este email ya está registrado')
+      }
+
+      if (data.session) {
+        setSuccess(true)
+        setTimeout(() => {
+          navigate('/')
+        }, 2000)
+      } else {
+        setSuccess(true)
+        setTimeout(() => {
+          navigate('/login')
+        }, 3000)
+      }
     } catch (err) {
       setError(err.message)
     } finally {
@@ -44,17 +57,21 @@ export function RegisterPage() {
 
   if (success) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-muted p-4">
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-100 to-slate-200 p-4">
         <Card className="w-full max-w-md">
           <CardContent className="p-8 text-center">
-            <div className="text-green-500 text-5xl mb-4">✓</div>
+            <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <span className="text-green-500 text-3xl">✓</span>
+            </div>
             <h2 className="text-2xl font-bold mb-2">¡Registro exitoso!</h2>
             <p className="text-muted-foreground mb-4">
-              Revisa tu email para confirmar tu cuenta.
+              Tu cuenta ha sido creada correctamente.
             </p>
-            <p className="text-sm text-muted-foreground">
-              Redirigiendo al login...
-            </p>
+            {navigate && (
+              <p className="text-sm text-muted-foreground">
+                Redirigiendo...
+              </p>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -62,15 +79,19 @@ export function RegisterPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-muted p-4">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-100 to-slate-200 p-4">
       <Card className="w-full max-w-md">
-        <CardHeader>
-          <CardTitle className="text-center">Crear Cuenta</CardTitle>
+        <CardHeader className="text-center">
+          <div className="w-14 h-14 bg-gradient-to-br from-blue-500 to-purple-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
+            <span className="text-white font-bold text-2xl">S</span>
+          </div>
+          <CardTitle className="text-2xl">Crear Cuenta</CardTitle>
+          <p className="text-sm text-muted-foreground">Únete a Sneaker Store</p>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleRegister} className="space-y-4">
             {error && (
-              <div className="p-3 text-sm text-red-500 bg-red-50 rounded">
+              <div className="p-3 text-sm text-red-500 bg-red-50 rounded-lg">
                 {error}
               </div>
             )}
@@ -112,14 +133,14 @@ export function RegisterPage() {
               {loading ? 'Registrando...' : 'Crear cuenta'}
             </Button>
           </form>
-          <div className="mt-4 text-center text-sm space-y-2">
+          <div className="mt-6 text-center text-sm space-y-2">
             <p className="text-muted-foreground">
               ¿Ya tienes cuenta?{' '}
-              <Link to="/login" className="text-primary hover:underline">
+              <Link to="/login" className="text-primary font-medium hover:underline">
                 Inicia sesión
               </Link>
             </p>
-            <Link to="/" className="text-muted-foreground hover:text-foreground block">
+            <Link to="/" className="text hover:text-foreground-muted-foreground block">
               ← Volver al inicio
             </Link>
           </div>
